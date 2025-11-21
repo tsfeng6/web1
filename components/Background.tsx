@@ -3,9 +3,10 @@ import React, { useMemo } from 'react';
 interface BackgroundProps {
   visible: boolean;
   refreshKey: number;
+  lite?: boolean;
 }
 
-const Background: React.FC<BackgroundProps> = ({ visible, refreshKey }) => {
+const Background: React.FC<BackgroundProps> = ({ visible, refreshKey, lite = false }) => {
   // Monet Palette: Soft, pastel, impressionist colors
   const MONET_PALETTE = [
     '#B5C7D3', // Foggy Blue
@@ -20,9 +21,12 @@ const Background: React.FC<BackgroundProps> = ({ visible, refreshKey }) => {
     '#AED6F1', // Blue
   ];
 
+  // Optimized: Reduce blob count from 8 to 5 to save GPU fill-rate
+  const BLOB_COUNT = 5;
+
   // Re-generate blobs when refreshKey changes
   const blobs = useMemo(() => {
-    return Array.from({ length: 8 }).map((_, i) => ({
+    return Array.from({ length: BLOB_COUNT }).map((_, i) => ({
       id: i,
       color: MONET_PALETTE[Math.floor(Math.random() * MONET_PALETTE.length)],
       // Fully randomized positions
@@ -36,6 +40,20 @@ const Background: React.FC<BackgroundProps> = ({ visible, refreshKey }) => {
     }));
   }, [refreshKey]);
 
+  if (lite) {
+      // LITE MODE: Render a static, lightweight CSS gradient instead of heavy blobs
+      return (
+          <div 
+            className={`fixed inset-0 z-0 overflow-hidden pointer-events-none transition-opacity duration-1000 ease-in-out ${visible ? 'opacity-100' : 'opacity-0'}`}
+            style={{
+                background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)'
+            }}
+          >
+              <div className="absolute inset-0 bg-white/50" />
+          </div>
+      );
+  }
+
   return (
     <div 
       className={`fixed inset-0 z-0 overflow-hidden pointer-events-none transition-opacity duration-1000 ease-in-out ${visible ? 'opacity-100' : 'opacity-0'}`}
@@ -46,21 +64,23 @@ const Background: React.FC<BackgroundProps> = ({ visible, refreshKey }) => {
       {blobs.map((blob) => (
         <div
           key={`${blob.id}-${refreshKey}`} // Crucial: forces React to destroy and recreate DOM node for new random positions
-          className="absolute rounded-full mix-blend-multiply filter blur-[80px] opacity-60"
+          // Optimized: Removed 'mix-blend-multiply' which is very expensive for integrated GPUs
+          // Optimized: Added transform-gpu to force hardware acceleration layer
+          className="absolute rounded-full filter blur-[60px] opacity-50 transform-gpu will-change-transform"
           style={{
             backgroundColor: blob.color,
             width: `${blob.size}vw`,
             height: `${blob.size}vw`,
             top: `${blob.top}%`,
             left: `${blob.left}%`,
-            transform: 'translate(-50%, -50%)', // Center the blob on the coordinate
+            transform: 'translate(-50%, -50%) translateZ(0)', // Center and force 3D
             animation: `float ${blob.moveDuration}s infinite ease-in-out alternate`,
             animationDelay: `${blob.delay}s`,
           }}
         />
       ))}
       
-      {/* Noise texture overlay for realism */}
+      {/* Noise texture overlay for realism - Kept as it's relatively cheap if static */}
       <div className="absolute inset-0 opacity-[0.03] z-10 pointer-events-none mix-blend-overlay"
            style={{
              backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`

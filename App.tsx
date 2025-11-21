@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Newspaper, ChevronRight, Layers, Smartphone, Palette, Lock, Plus, Trash2, Save, Image as ImageIcon, MapPin, Upload, Zap, FileText, Folder, Delete, X } from 'lucide-react';
+import { ArrowLeft, Newspaper, ChevronRight, Layers, Smartphone, Palette, Lock, Plus, Trash2, Save, Image as ImageIcon, MapPin, Upload, Zap, FileText, Folder, Delete, X, ZapOff, Leaf } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import Background from './components/Background';
 import GlassCard from './components/GlassCard';
@@ -106,6 +106,7 @@ const INITIAL_NEWS_ITEMS: NewsItem[] = [
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageKey>('home');
   const [theme, setTheme] = useState<Theme>('stereo');
+  const [isLiteMode, setIsLiteMode] = useState(false);
   
   // App State
   const [newsItems, setNewsItems] = useState<NewsItem[]>(INITIAL_NEWS_ITEMS);
@@ -241,6 +242,11 @@ const App: React.FC = () => {
         }, 800); 
     }, 250); 
   };
+  
+  const toggleLiteMode = (e?: React.MouseEvent) => {
+      if(e) e.stopPropagation();
+      setIsLiteMode(prev => !prev);
+  };
 
   // --- Helper Styles ---
   const getFontClass = (type: 'h1' | 'h2' | 'body' | 'label') => {
@@ -363,7 +369,8 @@ const App: React.FC = () => {
         
         {/* Header */}
         <GlassCard 
-          variant={theme} 
+          variant={theme}
+          lite={isLiteMode}
           className="w-full h-[32vh] flex items-center justify-center relative group"
         >
            <div className="text-center z-10 pt-8">
@@ -376,7 +383,7 @@ const App: React.FC = () => {
                 <span className={`h-[1px] w-12 transition-colors ${theme === 'stereo' ? 'bg-gray-400' : 'bg-gray-400'}`}></span>
               </div>
            </div>
-           {theme === 'stereo' && (
+           {theme === 'stereo' && !isLiteMode && (
              <div className="absolute top-10 left-10 opacity-10 -rotate-12">
                 <MacBookIcon className="w-24 h-24 text-gray-800" strokeWidth={0.5} />
              </div>
@@ -384,6 +391,15 @@ const App: React.FC = () => {
 
            {/* RELOCATED BUTTONS: Backend & Theme */}
            <div className="absolute bottom-6 right-6 flex gap-4 z-20">
+                {/* Lite Mode Toggle */}
+               <button 
+                  onClick={toggleLiteMode}
+                  className={`p-3 rounded-full transition-all duration-300 flex items-center justify-center group hover:scale-105 ${isLiteMode ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-white/40 text-gray-500 hover:bg-white/60'}`}
+                  title={isLiteMode ? "Disable Eco Mode" : "Enable Eco Mode (Fix GPU lag)"}
+               >
+                   {isLiteMode ? <Leaf size={20} strokeWidth={2} /> : <Zap size={20} strokeWidth={lucideStroke} />}
+               </button>
+
                <button 
                   onClick={toggleTheme}
                   className={`p-3 rounded-full transition-all duration-300 flex items-center justify-center group hover:scale-105 ${theme === 'stereo' ? 'bg-white/40 hover:bg-white/60 text-gray-700 shadow-lg' : 'border border-gray-300 hover:border-gray-600 text-gray-500 hover:text-gray-900'}`}
@@ -407,11 +423,12 @@ const App: React.FC = () => {
           {/* News Feed */}
           <div className="lg:col-span-5 h-full">
               <GlassCard 
-                  variant={theme} 
+                  variant={theme}
+                  lite={isLiteMode} 
                   className="h-full flex flex-col p-8 group relative"
                   // Clicking header goes to timeline
                   onClick={() => handleNavigate('news-full')}
-                  hoverEffect={true}
+                  hoverEffect={!isLiteMode}
               >
                 <div className="flex items-center justify-between mb-8 opacity-80 cursor-pointer">
                   <div className="flex items-center gap-3">
@@ -459,7 +476,7 @@ const App: React.FC = () => {
 
           {/* Icon Grid & Tools */}
           <div className="lg:col-span-7 h-full">
-              <GlassCard variant={theme} className="h-full relative flex items-center justify-center p-8">
+              <GlassCard variant={theme} lite={isLiteMode} className="h-full relative flex items-center justify-center p-8">
                 <div className="w-full h-full flex flex-col">
                     
                     {/* Main Categories */}
@@ -531,7 +548,7 @@ const App: React.FC = () => {
 
     return (
         <div className="h-full w-full flex items-center justify-center p-6 md:p-10">
-            <GlassCard variant={theme} className="w-full max-w-5xl h-[85vh] flex flex-col md:flex-row overflow-hidden">
+            <GlassCard variant={theme} lite={isLiteMode} className="w-full max-w-5xl h-[85vh] flex flex-col md:flex-row overflow-hidden">
                 {/* Sidebar / Header Area */}
                 <div className={`w-full md:w-1/3 p-10 flex flex-col relative border-b md:border-b-0 md:border-r ${theme === 'stereo' ? 'bg-white/10 border-white/20' : 'bg-transparent border-gray-200'}`}>
                     <button 
@@ -564,7 +581,7 @@ const App: React.FC = () => {
   // Full Screen Timeline Page
   const renderNewsTimeline = () => (
       <div className="h-full w-full flex items-center justify-center p-6 md:p-10">
-          <GlassCard variant={theme} className="w-full max-w-5xl h-[85vh] flex flex-col relative overflow-hidden p-10">
+          <GlassCard variant={theme} lite={isLiteMode} className="w-full max-w-5xl h-[85vh] flex flex-col relative overflow-hidden p-10">
                <div className="flex items-center justify-between mb-10 z-10">
                   <button onClick={() => handleNavigate('home')} className="p-3 rounded-full hover:bg-gray-100/20 transition-colors flex items-center gap-2 text-gray-600">
                       <ArrowLeft size={24} strokeWidth={iconStrokeWidth} />
@@ -615,7 +632,7 @@ const App: React.FC = () => {
       const data = PAGES[currentPage];
       return (
         <div className="h-full w-full flex items-center justify-center p-6 md:p-10">
-          <GlassCard variant={theme} className="w-full max-w-5xl h-[85vh] flex flex-col md:flex-row overflow-hidden">
+          <GlassCard variant={theme} lite={isLiteMode} className="w-full max-w-5xl h-[85vh] flex flex-col md:flex-row overflow-hidden">
             {/* Sidebar */}
             <div className={`w-full md:w-1/3 p-10 flex flex-col justify-between relative overflow-hidden border-b md:border-b-0 md:border-r ${
               theme === 'stereo' ? 'bg-white/10 border-white/20' : 'bg-transparent border-gray-200'
@@ -658,7 +675,7 @@ const App: React.FC = () => {
 
   const renderGeoTool = () => (
       <div className="h-full w-full flex items-center justify-center p-6 md:p-10">
-        <GlassCard variant={theme} className="w-full max-w-4xl h-[80vh] flex flex-col relative p-10 overflow-hidden">
+        <GlassCard variant={theme} lite={isLiteMode} className="w-full max-w-4xl h-[80vh] flex flex-col relative p-10 overflow-hidden">
            {/* Header */}
            <div className="flex items-center justify-between mb-8 z-10">
                <button onClick={() => handleNavigate('home')} className="p-3 rounded-full hover:bg-gray-100/20 transition-colors">
@@ -727,7 +744,7 @@ const App: React.FC = () => {
 
   const renderAdminLogin = () => (
      <div className="h-full w-full flex items-center justify-center p-6 md:p-10 relative z-50">
-        <GlassCard variant={theme} className={`w-full max-w-md p-8 flex flex-col items-center justify-center transition-transform ${isShake ? 'shake-anim' : ''} relative`}>
+        <GlassCard variant={theme} lite={isLiteMode} className={`w-full max-w-md p-8 flex flex-col items-center justify-center transition-transform ${isShake ? 'shake-anim' : ''} relative`}>
            
            {/* Back Button */}
            <button 
@@ -799,7 +816,7 @@ const App: React.FC = () => {
 
   const renderAdminDashboard = () => (
       <div className="h-full w-full flex items-center justify-center p-6 md:p-10">
-          <GlassCard variant={theme} className="w-full max-w-6xl h-[90vh] flex overflow-hidden">
+          <GlassCard variant={theme} lite={isLiteMode} className="w-full max-w-6xl h-[90vh] flex overflow-hidden">
               {/* Sidebar */}
               <div className="w-64 bg-white/20 border-r border-white/20 flex flex-col p-6">
                   <h2 className="text-xl font-bold text-gray-800 mb-8 flex items-center gap-2">
@@ -951,7 +968,7 @@ const App: React.FC = () => {
     <div className="relative w-full h-screen overflow-hidden font-sans selection:bg-blue-100 selection:text-blue-900">
       
       {/* Background Layer */}
-      <Background visible={theme === 'stereo'} refreshKey={bgRefreshKey} />
+      <Background visible={theme === 'stereo'} refreshKey={bgRefreshKey} lite={isLiteMode} />
 
       {/* Middle Stage Transition Overlay (Icon only) */}
       <div className={`fixed inset-0 z-[100] pointer-events-none flex items-center justify-center transition-all duration-500 ${
