@@ -6,7 +6,7 @@ interface GlassCardProps {
   onClick?: () => void;
   hoverEffect?: boolean;
   variant?: 'stereo' | 'flat';
-  lite?: boolean; // New Prop for performance mode
+  lite?: boolean; 
 }
 
 const GlassCard: React.FC<GlassCardProps> = ({ 
@@ -21,7 +21,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
   const glowRef = useRef<HTMLDivElement>(null);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Optimization: Completely skip this calculation in lite mode or if flat
+    // Optimization: Skip entirely in lite mode
     if (!divRef.current || !hoverEffect || variant !== 'stereo' || lite) return;
 
     const div = divRef.current;
@@ -29,7 +29,6 @@ const GlassCard: React.FC<GlassCardProps> = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // DIRECT DOM MANIPULATION FOR PERFORMANCE
     if (glowRef.current) {
        glowRef.current.style.opacity = '1';
        glowRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, rgba(255, 255, 255, 0.35), transparent 40%)`;
@@ -42,19 +41,18 @@ const GlassCard: React.FC<GlassCardProps> = ({
     }
   };
 
-  // Styles based on Variant
   const baseStyles = "relative transition-all duration-700";
   
-  // Stereo: 3D, Glass, Shadows
-  // OPTIMIZATION: In Lite mode, remove backdrop-blur and increase opacity to reduce fill-rate cost
+  // PERFORMANCE OPTIMIZATION LOGIC:
+  // Normal: Uses backdrop-blur (Heavy GPU usage)
+  // Lite: Uses opacity (Very light GPU usage) + No Shadow
   const stereoStyles = lite 
     ? `
       rounded-[2.5rem] 
-      border border-white/60 
-      bg-white/95 
-      shadow-lg
+      border border-white/80 
+      bg-white/90 
+      shadow-sm
       overflow-hidden
-      backdrop-filter-none
     `
     : `
       rounded-[2.5rem] 
@@ -65,7 +63,6 @@ const GlassCard: React.FC<GlassCardProps> = ({
       overflow-hidden
     `;
 
-  // Flat: Transparent, No Shadow, Open Lines design
   const flatStyles = `
     rounded-none
     bg-transparent
@@ -76,8 +73,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
     hoverEffect && !lite ? (variant === 'stereo' ? 'hover:scale-[1.02] hover:shadow-2xl' : '') : ''
   } ${hoverEffect ? 'cursor-pointer' : ''} ${className}`;
 
-  // Stereo specific inline styles for volume/depth
-  // OPTIMIZATION: Remove complex shadows in lite mode
+  // Only apply complex shadows in standard mode
   const stereoInlineStyles = (variant === 'stereo' && !lite) ? {
     boxShadow: `
       0 30px 60px -12px rgba(0, 0, 0, 0.1),
@@ -95,7 +91,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
       className={combinedStyles}
       style={stereoInlineStyles}
     >
-      {/* Spotlight Glow Effect Layer (Only for Stereo AND NOT Lite) */}
+      {/* Glow only in Standard Mode */}
       {variant === 'stereo' && !lite && (
         <div
           ref={glowRef}
@@ -103,28 +99,19 @@ const GlassCard: React.FC<GlassCardProps> = ({
         />
       )}
       
-      {/* FLAT MODE: Open Lines / Crop Marks Design */}
       {variant === 'flat' && (
         <>
-           {/* Top Left Corner */}
            <div className="absolute top-0 left-0 w-4 h-[1px] bg-gray-400/60" />
            <div className="absolute top-0 left-0 w-[1px] h-4 bg-gray-400/60" />
-           
-           {/* Top Right Corner */}
            <div className="absolute top-0 right-0 w-4 h-[1px] bg-gray-400/60" />
            <div className="absolute top-0 right-0 w-[1px] h-4 bg-gray-400/60" />
-
-           {/* Bottom Left Corner */}
            <div className="absolute bottom-0 left-0 w-4 h-[1px] bg-gray-400/60" />
            <div className="absolute bottom-0 left-0 w-[1px] h-4 bg-gray-400/60" />
-
-           {/* Bottom Right Corner */}
            <div className="absolute bottom-0 right-0 w-4 h-[1px] bg-gray-400/60" />
            <div className="absolute bottom-0 right-0 w-[1px] h-4 bg-gray-400/60" />
         </>
       )}
 
-      {/* Content */}
       <div className="relative h-full w-full z-10">
         {children}
       </div>

@@ -106,6 +106,8 @@ const INITIAL_NEWS_ITEMS: NewsItem[] = [
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageKey>('home');
   const [theme, setTheme] = useState<Theme>('stereo');
+  
+  // Optimization: Default to TRUE if unsure, to be safe for performance
   const [isLiteMode, setIsLiteMode] = useState(false);
   
   // App State
@@ -133,7 +135,7 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [geoResult, setGeoResult] = useState<{city: string, prob: number}[] | null>(null);
   
-  // Font injection
+  // Initialization & Font injection
   useEffect(() => {
     const loadFonts = async () => {
       try {
@@ -157,6 +159,13 @@ const App: React.FC = () => {
       }
     };
     loadFonts();
+
+    // Performance: Auto-enable Lite Mode for low-spec devices
+    // 4 cores or less typically implies an older CPU/iGPU combo or mobile device
+    if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) {
+        console.log("Low-end device detected (<=4 cores), enabling Lite Mode automatically.");
+        setIsLiteMode(true);
+    }
   }, []);
 
   // Admin Login Listener (Physical Keyboard)
@@ -215,7 +224,7 @@ const App: React.FC = () => {
           setGeoResult(null);
       }
       if (page !== 'news-detail') {
-          // Optional: reset article selection if needed, but usually good to keep for history
+          // Optional: reset article selection if needed
       }
       window.scrollTo(0, 0);
       setTimeout(() => {
@@ -394,8 +403,8 @@ const App: React.FC = () => {
                 {/* Lite Mode Toggle */}
                <button 
                   onClick={toggleLiteMode}
-                  className={`p-3 rounded-full transition-all duration-300 flex items-center justify-center group hover:scale-105 ${isLiteMode ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-white/40 text-gray-500 hover:bg-white/60'}`}
-                  title={isLiteMode ? "Disable Eco Mode" : "Enable Eco Mode (Fix GPU lag)"}
+                  className={`p-3 rounded-full transition-all duration-300 flex items-center justify-center group hover:scale-105 ${isLiteMode ? 'bg-green-100 text-green-700 border border-green-300 shadow-md' : 'bg-white/40 text-gray-500 hover:bg-white/60'}`}
+                  title={isLiteMode ? "已开启节能模式 (高性能)" : "开启节能模式 (解决卡顿)"}
                >
                    {isLiteMode ? <Leaf size={20} strokeWidth={2} /> : <Zap size={20} strokeWidth={lucideStroke} />}
                </button>
@@ -403,14 +412,14 @@ const App: React.FC = () => {
                <button 
                   onClick={toggleTheme}
                   className={`p-3 rounded-full transition-all duration-300 flex items-center justify-center group hover:scale-105 ${theme === 'stereo' ? 'bg-white/40 hover:bg-white/60 text-gray-700 shadow-lg' : 'border border-gray-300 hover:border-gray-600 text-gray-500 hover:text-gray-900'}`}
-                  title="Switch Theme"
+                  title="切换主题"
                >
                    {theme === 'stereo' ? <Smartphone size={20} strokeWidth={lucideStroke} /> : <Layers size={20} strokeWidth={lucideStroke} />}
                </button>
                <button 
                   onClick={(e) => { e.stopPropagation(); handleNavigate('admin'); }}
                   className={`p-3 rounded-full transition-all duration-300 flex items-center justify-center group hover:scale-105 ${theme === 'stereo' ? 'bg-white/40 hover:bg-white/60 text-gray-700 shadow-lg' : 'border border-gray-300 hover:border-gray-600 text-gray-500 hover:text-gray-900'}`}
-                  title="Backend Login"
+                  title="后台登录"
                >
                    <ShieldIcon className="w-5 h-5" strokeWidth={shieldStroke} />
                </button>

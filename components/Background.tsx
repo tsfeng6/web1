@@ -7,50 +7,38 @@ interface BackgroundProps {
 }
 
 const Background: React.FC<BackgroundProps> = ({ visible, refreshKey, lite = false }) => {
-  // Monet Palette: Soft, pastel, impressionist colors
+  // Monet Palette
   const MONET_PALETTE = [
-    '#B5C7D3', // Foggy Blue
-    '#D8BFD8', // Thistle
-    '#F2D7D5', // Pale Pink
-    '#D4E6F1', // Sky Blue
-    '#D5F5E3', // Mint
-    '#FCF3CF', // Cream
-    '#E8DAEF', // Soft Lavender
-    '#A9DFBF', // Green
-    '#FAD7A0', // Peach
-    '#AED6F1', // Blue
+    '#B5C7D3', '#D8BFD8', '#F2D7D5', '#D4E6F1', '#D5F5E3', 
+    '#FCF3CF', '#E8DAEF', '#A9DFBF', '#FAD7A0', '#AED6F1',
   ];
 
-  // Optimized: Reduce blob count from 8 to 5 to save GPU fill-rate
-  const BLOB_COUNT = 5;
+  // OPTIMIZATION:
+  // HD 520 struggles with fill-rate.
+  // 3 blobs is the sweet spot between "empty" and "laggy".
+  const BLOB_COUNT = 3;
 
-  // Re-generate blobs when refreshKey changes
   const blobs = useMemo(() => {
     return Array.from({ length: BLOB_COUNT }).map((_, i) => ({
       id: i,
       color: MONET_PALETTE[Math.floor(Math.random() * MONET_PALETTE.length)],
-      // Fully randomized positions
-      top: Math.random() * 100,
-      left: Math.random() * 100,
-      size: Math.random() * 40 + 20, // 20vw - 60vw
-      
-      // Animation physics
-      moveDuration: Math.random() * 20 + 20,
+      top: Math.random() * 80,
+      left: Math.random() * 80,
+      size: Math.random() * 30 + 40, // 40vw - 70vw (Large but few)
+      moveDuration: Math.random() * 20 + 25, // Slower animation is smoother on low FPS
       delay: Math.random() * -20,
     }));
   }, [refreshKey]);
 
+  // Lite Mode: Static gradient (Lowest cost)
   if (lite) {
-      // LITE MODE: Render a static, lightweight CSS gradient instead of heavy blobs
       return (
           <div 
             className={`fixed inset-0 z-0 overflow-hidden pointer-events-none transition-opacity duration-1000 ease-in-out ${visible ? 'opacity-100' : 'opacity-0'}`}
             style={{
-                background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)'
+                background: 'linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%)'
             }}
-          >
-              <div className="absolute inset-0 bg-white/50" />
-          </div>
+          />
       );
   }
 
@@ -58,41 +46,36 @@ const Background: React.FC<BackgroundProps> = ({ visible, refreshKey, lite = fal
     <div 
       className={`fixed inset-0 z-0 overflow-hidden pointer-events-none transition-opacity duration-1000 ease-in-out ${visible ? 'opacity-100' : 'opacity-0'}`}
     >
-      {/* Background base - Transparent to let any parent bg show, or white fallback */}
-      <div className="absolute inset-0 bg-white/30" />
+      <div className="absolute inset-0 bg-white/40" />
       
       {blobs.map((blob) => (
         <div
-          key={`${blob.id}-${refreshKey}`} // Crucial: forces React to destroy and recreate DOM node for new random positions
-          // Optimized: Removed 'mix-blend-multiply' which is very expensive for integrated GPUs
-          // Optimized: Added transform-gpu to force hardware acceleration layer
-          className="absolute rounded-full filter blur-[60px] opacity-50 transform-gpu will-change-transform"
+          key={`${blob.id}-${refreshKey}`}
+          // OPTIMIZATION CRITICAL POINTS:
+          // 1. transform-gpu: Forces creation of a composite layer.
+          // 2. will-change-transform: Hints browser to optimize for movement.
+          // 3. REMOVED 'mix-blend-mode': This is the most expensive operation for iGPUs.
+          className="absolute rounded-full opacity-40 transform-gpu will-change-transform blur-[80px]"
           style={{
             backgroundColor: blob.color,
             width: `${blob.size}vw`,
             height: `${blob.size}vw`,
             top: `${blob.top}%`,
             left: `${blob.left}%`,
-            transform: 'translate(-50%, -50%) translateZ(0)', // Center and force 3D
+            // translateZ(0) engages hardware acceleration
+            transform: 'translate3d(-50%, -50%, 0)', 
             animation: `float ${blob.moveDuration}s infinite ease-in-out alternate`,
             animationDelay: `${blob.delay}s`,
           }}
         />
       ))}
       
-      {/* Noise texture overlay for realism - Kept as it's relatively cheap if static */}
-      <div className="absolute inset-0 opacity-[0.03] z-10 pointer-events-none mix-blend-overlay"
-           style={{
-             backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`
-           }}
-      ></div>
-
       <style>{`
         @keyframes float {
-          0% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-          33% { transform: translate(-40%, -60%) scale(1.1) rotate(10deg); }
-          66% { transform: translate(-60%, -40%) scale(0.9) rotate(-10deg); }
-          100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+          0% { transform: translate3d(-50%, -50%, 0) scale(1) rotate(0deg); }
+          33% { transform: translate3d(-40%, -60%, 0) scale(1.05) rotate(5deg); }
+          66% { transform: translate3d(-60%, -40%, 0) scale(0.95) rotate(-5deg); }
+          100% { transform: translate3d(-50%, -50%, 0) scale(1) rotate(0deg); }
         }
       `}</style>
     </div>
