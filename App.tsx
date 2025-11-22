@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Newspaper, ChevronRight, Layers, Smartphone, Palette, Lock, Plus, Trash2, Save, Image as ImageIcon, MapPin, Upload, Zap, FileText, Folder, Delete, X, ZapOff, Leaf, Globe, Settings, Cpu, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Newspaper, ChevronRight, Layers, Smartphone, Palette, Lock, Plus, Trash2, Save, Image as ImageIcon, MapPin, Upload, Zap, FileText, Folder, Delete, X, ZapOff, Leaf, Globe, Settings, Cpu, ChevronDown, Activity, Monitor, Clock } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import Background from './components/Background';
 import GlassCard from './components/GlassCard';
@@ -10,7 +10,7 @@ import { PageKey, NewsItem, PageData } from './types';
 // --- Data Types & Content ---
 type Theme = 'stereo' | 'flat';
 type TransitionStage = 'idle' | 'exiting' | 'holding' | 'entering';
-type AIProvider = 'gemini' | 'deepseek';
+type AIProvider = 'gemini' | 'kimi';
 
 // Helper for LocalStorage with Version Control
 const useStickyState = <T,>(defaultValue: T, key: string, version?: number): [T, React.Dispatch<React.SetStateAction<T>>] => {
@@ -58,10 +58,7 @@ const simpleHash = (str: string) => {
 };
 
 // Default Password Hash (11451419)
-// Pre-calculated hash to avoid plain text in source code to some extent, 
-// though client-side auth is never fully secure.
 const DEFAULT_PASS_HASH = "63a63a8e"; 
-// We can also use a obfuscated default if we want to reset:
 const DEFAULT_PASS_RAW = atob('MTE0NTE0MTk='); 
 
 const App: React.FC = () => {
@@ -72,16 +69,15 @@ const App: React.FC = () => {
   const [isLiteMode, setIsLiteMode] = useState(false);
   
   // --- PERSISTENT STATE (With Versioning) ---
-  // Now using DATA_VERSION from content.tsx. Bumping it in the file will reset these states for users.
   const [newsItems, setNewsItems] = useStickyState<NewsItem[]>(INITIAL_NEWS_ITEMS, 'digibox_news', DATA_VERSION);
   
   // Store HASHED password
   const [adminPasswordHash, setAdminPasswordHash] = useStickyState<string>(simpleHash(DEFAULT_PASS_RAW), 'digibox_admin_pass_hash', DATA_VERSION);
   
-  // AI Settings (Not versioned strictly to preserve user API keys across content updates)
-  const [deepSeekKey, setDeepSeekKey] = useStickyState<string>('', 'digibox_ds_key');
-  const [deepSeekUrl, setDeepSeekUrl] = useStickyState<string>('https://api.deepseek.com', 'digibox_ds_url');
-  const [deepSeekModel, setDeepSeekModel] = useStickyState<string>('deepseek-chat', 'digibox_ds_model');
+  // AI Settings (Replaced DeepSeek with Kimi/Moonshot)
+  const [kimiKey, setKimiKey] = useStickyState<string>('', 'digibox_kimi_key');
+  const [kimiUrl, setKimiUrl] = useStickyState<string>('https://api.moonshot.cn/v1', 'digibox_kimi_url');
+  const [kimiModel, setKimiModel] = useStickyState<string>('moonshot-v1-8k', 'digibox_kimi_model');
 
   // App State
   const [selectedArticleId, setSelectedArticleId] = useState<number | null>(null);
@@ -106,7 +102,15 @@ const App: React.FC = () => {
   const [aiProvider, setAiProvider] = useState<AIProvider>('gemini');
   const [userRegion, setUserRegion] = useState<string>('Unknown');
 
-  // Initialization: Fonts, Hardware Check, IP Check
+  // System Info State for Header
+  const [sysInfo, setSysInfo] = useState<{cpu: string, gpu: string, os: string, runtime: number}>({
+      cpu: 'Unknown',
+      gpu: 'Unknown',
+      os: 'Unknown',
+      runtime: 0
+  });
+
+  // Initialization
   useEffect(() => {
     const loadFonts = async () => {
       try {
@@ -144,25 +148,73 @@ const App: React.FC = () => {
             if (res.ok) {
                 const data = await res.json();
                 const country = data.country_code || data.country;
-                console.log("User Region Detected:", country);
                 setUserRegion(country);
                 if (country === 'CN') {
-                    setAiProvider('deepseek');
+                    setAiProvider('kimi');
                 } else {
                     setAiProvider('gemini');
                 }
             }
         } catch (error) {
             console.warn("Failed to detect region, defaulting to Gemini", error);
-            // Fallback: check time zone or language
             const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
             if (tz.includes('Shanghai') || tz.includes('Beijing')) {
-                setAiProvider('deepseek');
+                setAiProvider('kimi');
                 setUserRegion('CN (Est)');
             }
         }
     };
     checkRegion();
+
+    // Hardware & System Info Detection
+    const detectHardware = () => {
+        let cpu = 'Unknown';
+        let gpu = 'Integrated Graphics';
+        let os = 'Web OS';
+
+        // CPU (Cores) - Browser privacy prevents accessing Model Name (e.g. i9-14900K)
+        // We can only get the logical core count.
+        if (navigator.hardwareConcurrency) {
+            cpu = `${navigator.hardwareConcurrency} Cores`;
+        }
+
+        // OS
+        if (navigator.userAgent.indexOf('Win') !== -1) os = 'Windows';
+        else if (navigator.userAgent.indexOf('Mac') !== -1) os = 'macOS';
+        else if (navigator.userAgent.indexOf('Linux') !== -1) os = 'Linux';
+        else if (navigator.userAgent.indexOf('Android') !== -1) os = 'Android';
+        else if (navigator.userAgent.indexOf('like Mac') !== -1) os = 'iOS';
+
+        // GPU (WebGL Trick)
+        try {
+            const canvas = document.createElement('canvas');
+            const gl = (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')) as WebGLRenderingContext | null;
+            if (gl) {
+                const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                if (debugInfo) {
+                    const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                    if (renderer) {
+                        // Simplify the renderer string by removing "ANGLE (" wrapper common in Chrome
+                        // but KEEP the full GPU name as requested.
+                        gpu = renderer.replace(/^ANGLE \((.+)\)$/, '$1');
+                        // Remove extra info like Direct3D version if present to keep it slightly clean but full
+                        // gpu = gpu.replace(/, Microsoft Basic Render Driver/, ''); 
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('GPU Detect failed', e);
+        }
+
+        // Runtime (Mock start date: 2024-09-01)
+        const startDate = new Date('2024-09-01').getTime();
+        const now = new Date().getTime();
+        const days = Math.floor((now - startDate) / (1000 * 60 * 60 * 24));
+
+        setSysInfo({ cpu, gpu, os, runtime: days });
+    };
+    detectHardware();
+
   }, []);
 
   // Admin Login Listener
@@ -192,7 +244,6 @@ const App: React.FC = () => {
           const newCode = inputCode + key;
           setInputCode(newCode);
           if (newCode.length === 8) {
-              // Compare HASH
               if (simpleHash(newCode) === adminPasswordHash) {
                   setTimeout(() => setIsAdminAuthenticated(true), 300);
               } else {
@@ -293,20 +344,22 @@ const App: React.FC = () => {
       return response.text ? JSON.parse(response.text) : null;
   };
 
-  const callDeepSeek = async (base64Image: string) => {
-      if (!deepSeekKey) throw new Error("API_KEY_MISSING");
+  const callKimi = async (base64Image: string) => {
+      if (!kimiKey) throw new Error("API_KEY_MISSING");
       
-      // IMPORTANT: DeepSeek standard 'chat' models usually DON'T support images.
-      // The user must configure a compatible model (e.g. via OpenRouter or a local vision model).
-      // We construct a standard OpenAI Vision payload here.
+      // Kimi (Moonshot) Standard OpenAI Compatible Payload
+      // Note: Pure Moonshot API might need File Upload API for images, 
+      // but many users use proxies that support OpenAI Vision format.
+      // We stick to OpenAI Vision format as a standard interface.
       
       const payload = {
-          model: deepSeekModel || "deepseek-chat", 
+          model: kimiModel || "moonshot-v1-8k", 
           messages: [
               {
                   role: "user",
                   content: [
                       { type: "text", text: "Analyze the location of this image. Identify the city or region. Return a strict JSON array (no markdown) of exactly 4 potential locations with confidence probability (integer 0-100). Format: [{\"city\": \"Name\", \"prob\": 90}, ...]" },
+                      // If Kimi doesn't support inline URL, this might fail on standard endpoints without a compatible proxy
                       { type: "image_url", image_url: { url: base64Image } }
                   ]
               }
@@ -314,32 +367,30 @@ const App: React.FC = () => {
           max_tokens: 500
       };
 
-      // Clean URL (remove trailing slash)
-      const baseUrl = deepSeekUrl.replace(/\/$/, '');
+      // Clean URL
+      const baseUrl = kimiUrl.replace(/\/$/, '');
       const url = `${baseUrl}/chat/completions`;
 
       const res = await fetch(url, {
           method: 'POST',
           headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${deepSeekKey}`
+              'Authorization': `Bearer ${kimiKey}`
           },
           body: JSON.stringify(payload)
       });
 
       if (!res.ok) {
           const errText = await res.text();
-          // Check for common DeepSeek 400 error regarding media
           if (res.status === 400 && errText.includes("media")) {
              throw new Error("VISION_NOT_SUPPORTED");
           }
-          throw new Error(`DeepSeek API Error: ${res.status} - ${errText}`);
+          throw new Error(`Kimi API Error: ${res.status} - ${errText}`);
       }
 
       const data = await res.json();
       const content = data.choices?.[0]?.message?.content;
       
-      // Cleanup Markdown code blocks if present
       const cleanJson = content.replace(/```json\n?|```/g, '').trim();
       return JSON.parse(cleanJson);
   };
@@ -354,8 +405,8 @@ const App: React.FC = () => {
         const base64Data = mimeTypeMatch[2];
 
         let result;
-        if (aiProvider === 'deepseek') {
-            result = await callDeepSeek(base64Image);
+        if (aiProvider === 'kimi') {
+            result = await callKimi(base64Image);
         } else {
             result = await callGemini(mimeType, base64Data);
         }
@@ -380,10 +431,10 @@ const App: React.FC = () => {
           }
           
           setGeoResult([
-              { city: `错误: ${aiProvider === 'deepseek' ? 'DeepSeek' : 'Gemini'}`, prob: 0, error: true },
+              { city: `错误: ${aiProvider === 'kimi' ? 'Kimi' : 'Gemini'}`, prob: 0, error: true },
               { city: errorMsg, prob: 0, error: isAuthError || isVisionError },
               { city: isAuthError ? '点击此处前往配置' : '请检查系统设置', prob: 0, error: isAuthError },
-              { city: isVisionError ? '请切换 AI 模型' : 'Please check Admin', prob: 0 },
+              { city: isVisionError ? '请更换支持 Vision 的模型' : 'Please check Admin', prob: 0 },
           ]);
       } finally {
           setIsAnalyzing(false);
@@ -407,15 +458,14 @@ const App: React.FC = () => {
   // --- Logic: Admin ---
   const handleSaveArticle = () => {
       if (editingArticle && editingArticle.title && editingArticle.title.trim()) {
+          const cleanTitle = editingArticle.title.trim();
           if (editingArticle.id) {
-              // Update
-              setNewsItems(prev => prev.map(item => item.id === editingArticle.id ? { ...item, ...editingArticle } as NewsItem : item));
+              setNewsItems(prev => prev.map(item => item.id === editingArticle.id ? { ...item, ...editingArticle, title: cleanTitle } as NewsItem : item));
           } else {
-              // Create
               const newId = newsItems.length > 0 ? Math.max(...newsItems.map(i => i.id)) + 1 : 1;
               const newItem: NewsItem = {
                   id: newId,
-                  title: editingArticle.title!,
+                  title: cleanTitle,
                   date: new Date().toISOString().split('T')[0],
                   content: editingArticle.content || ''
               };
@@ -442,30 +492,52 @@ const App: React.FC = () => {
     return (
       <div className="h-full w-full flex flex-col gap-6 p-6 md:p-10 max-w-[1600px] mx-auto">
         
-        {/* Header */}
+        {/* Header - Redesigned Layout */}
         <GlassCard 
           variant={theme}
           lite={isLiteMode}
-          className="w-full h-[32vh] flex items-center justify-center relative group"
+          className="w-full h-[35vh] md:h-[32vh] relative group overflow-hidden"
         >
-           <div className="text-center z-10 pt-8">
-              <h1 className={`text-6xl md:text-8xl mb-6 transition-all duration-700 ${getFontClass('h1')}`}>
-                DigiBox
-              </h1>
-              <div className="flex items-center justify-center gap-6">
-                <span className={`h-[1px] w-12 transition-colors ${theme === 'stereo' ? 'bg-gray-400' : 'bg-gray-400'}`}></span>
-                <h2 className={`text-3xl md:text-4xl transition-all duration-700 ${getFontClass('h2')}`}>数码交流</h2>
-                <span className={`h-[1px] w-12 transition-colors ${theme === 'stereo' ? 'bg-gray-400' : 'bg-gray-400'}`}></span>
-              </div>
-           </div>
-           {theme === 'stereo' && !isLiteMode && (
-             <div className="absolute top-10 left-10 opacity-10 -rotate-12">
-                <MacBookIcon className="w-24 h-24 text-gray-800" strokeWidth={0.5} />
-             </div>
-           )}
+            {/* Main Container using absolute positioning for precise control */}
+           <div className="absolute inset-0 p-6 md:p-10 flex flex-col md:flex-row md:justify-between md:items-start pointer-events-none">
+                
+                {/* Left Side: Branding */}
+                <div className="flex flex-col justify-start h-full z-10 pointer-events-auto">
+                    <h1 className={`text-5xl md:text-7xl mb-0 transition-all duration-700 text-left font-black tracking-tighter leading-none ${theme === 'stereo' ? 'text-gray-800' : 'text-black'}`}>
+                        DigiBox
+                    </h1>
+                    <h2 className={`text-2xl md:text-3xl transition-all duration-700 text-left font-bold tracking-widest ml-1 mt-6 ${theme === 'stereo' ? 'text-gray-500' : 'text-gray-600'}`}>
+                        数码交流
+                    </h2>
+                </div>
 
-           {/* Buttons */}
-           <div className="absolute bottom-6 right-6 flex gap-4 z-20">
+                {/* Right Side: System Info (Full GPU Name, Logical Cores) */}
+                <div className="hidden md:flex flex-col items-end space-y-3 z-10 pointer-events-auto mt-1 mr-1 max-w-[50%]">
+                    {[
+                        { label: 'CPU', value: sysInfo.cpu, icon: Cpu },
+                        { label: 'GRAPHICS', value: sysInfo.gpu, icon: Monitor, truncate: false },
+                        { label: 'WEBSITE RUNTIME', value: `${sysInfo.runtime} Days`, icon: Activity }
+                    ].map((item, i) => (
+                        <div key={i} className="flex items-center gap-4 group/info justify-end">
+                            <div className="flex flex-col items-end">
+                                <span className="text-[10px] font-bold tracking-widest text-gray-400 mb-0.5">{item.label}</span>
+                                <span 
+                                    className={`font-mono text-sm font-bold text-gray-600 group-hover/info:text-gray-900 transition-colors text-right`} 
+                                    title={item.value}
+                                >
+                                    {item.value}
+                                </span>
+                            </div>
+                            <div className={`p-2 rounded-xl transition-colors flex-shrink-0 ${theme === 'stereo' ? 'bg-white/50 shadow-sm text-gray-500 group-hover/info:bg-white group-hover/info:text-blue-600' : 'border border-gray-200 text-gray-400'}`}>
+                                <item.icon size={16} strokeWidth={2} />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+           </div>
+
+           {/* Action Buttons (Bottom Right Absolute) */}
+           <div className="absolute bottom-8 right-8 flex gap-4 z-20 pointer-events-auto">
                <button 
                   onClick={toggleLiteMode}
                   className={`p-3 rounded-full transition-all duration-300 flex items-center justify-center group hover:scale-105 ${isLiteMode ? 'bg-green-100 text-green-700 border border-green-300 shadow-md' : 'bg-white/40 text-gray-500 hover:bg-white/60'}`}
@@ -728,13 +800,13 @@ const App: React.FC = () => {
                
                {/* AI Provider Switcher */}
                <button 
-                 onClick={() => setAiProvider(prev => prev === 'gemini' ? 'deepseek' : 'gemini')}
+                 onClick={() => setAiProvider(prev => prev === 'gemini' ? 'kimi' : 'gemini')}
                  className="flex items-center gap-2 px-4 py-2 bg-white/30 hover:bg-white/50 rounded-full border border-white/40 text-xs font-mono text-gray-700 transition-all cursor-pointer"
                  title="点击切换 AI 引擎"
                >
                    <Globe size={14} />
                    <span className="font-bold">
-                       {aiProvider === 'gemini' ? 'Google Gemini' : 'DeepSeek (CN)'}
+                       {aiProvider === 'gemini' ? 'Google Gemini' : 'Kimi (Moonshot)'}
                    </span>
                    {userRegion !== 'Unknown' && <span className="opacity-50">| {userRegion}</span>}
                    <ChevronDown size={12} className="opacity-50" />
@@ -755,7 +827,7 @@ const App: React.FC = () => {
                        <p className="text-xl text-gray-600 font-medium">点击或拖拽上传图片</p>
                        <p className="text-sm text-gray-500 mt-2">支持 JPG, PNG</p>
                        <p className="text-xs text-gray-400 mt-1">
-                           当前引擎: {aiProvider === 'gemini' ? 'Google Gemini' : 'DeepSeek / Compatible'}
+                           当前引擎: {aiProvider === 'gemini' ? 'Google Gemini' : 'Kimi (Moonshot)'}
                        </p>
                    </div>
                ) : (
@@ -828,7 +900,6 @@ const App: React.FC = () => {
                    />
                ))}
            </div>
-           {/* Password hint removed for security */}
 
            {/* KEYPAD */}
            <div className="grid grid-cols-3 gap-4 w-full max-w-[240px]">
@@ -852,7 +923,7 @@ const App: React.FC = () => {
                      theme === 'stereo' 
                      ? 'bg-white/40 hover:bg-white/60 text-gray-800 shadow-sm' 
                      : 'border border-gray-300 hover:bg-gray-50 text-gray-800'
-                 }`}
+                     }`}
                >
                    0
                </button>
@@ -1019,10 +1090,10 @@ const App: React.FC = () => {
                   {adminTab === 'system' && (
                       <div className="flex-1 p-10 flex flex-col items-center justify-center">
                           <div className="bg-white/40 p-8 rounded-2xl shadow-lg w-full max-w-lg overflow-y-auto max-h-full">
-                              <h3 className="text-xl font-bold mb-2 text-gray-700">AI 引擎配置 (DeepSeek)</h3>
+                              <h3 className="text-xl font-bold mb-2 text-gray-700">AI 引擎配置 (Kimi / Moonshot)</h3>
                               <p className="text-sm text-gray-500 mb-6">
-                                用于中国大陆地区的自动切换。DeepSeek 官方 API (chat) 通常不支持图片。
-                                建议配合 SiliconFlow、OpenRouter 或本地代理使用。
+                                配置 Kimi (Moonshot AI) 的 API 信息。用于中国大陆地区的图寻服务。
+                                注：标准 Kimi API 目前主要支持文本，图片识别可能需要特定的模型或兼容层。
                               </p>
                               
                               <div className="space-y-4">
@@ -1031,8 +1102,8 @@ const App: React.FC = () => {
                                       <input 
                                         type="password" 
                                         className="w-full bg-white/50 border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-blue-500 transition-colors font-mono"
-                                        value={deepSeekKey}
-                                        onChange={e => setDeepSeekKey(e.target.value)}
+                                        value={kimiKey}
+                                        onChange={e => setKimiKey(e.target.value)}
                                         placeholder="sk-..."
                                       />
                                   </div>
@@ -1042,9 +1113,9 @@ const App: React.FC = () => {
                                       <input 
                                         type="text" 
                                         className="w-full bg-white/50 border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-blue-500 transition-colors font-mono"
-                                        value={deepSeekUrl}
-                                        onChange={e => setDeepSeekUrl(e.target.value)}
-                                        placeholder="https://api.deepseek.com"
+                                        value={kimiUrl}
+                                        onChange={e => setKimiUrl(e.target.value)}
+                                        placeholder="https://api.moonshot.cn/v1"
                                       />
                                   </div>
 
@@ -1053,13 +1124,10 @@ const App: React.FC = () => {
                                       <input 
                                         type="text" 
                                         className="w-full bg-white/50 border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-blue-500 transition-colors font-mono"
-                                        value={deepSeekModel}
-                                        onChange={e => setDeepSeekModel(e.target.value)}
-                                        placeholder="deepseek-chat"
+                                        value={kimiModel}
+                                        onChange={e => setKimiModel(e.target.value)}
+                                        placeholder="moonshot-v1-8k"
                                       />
-                                      <p className="text-xs text-gray-400 mt-1">
-                                          注: 如使用图片识别，请确保该模型支持 Vision (例如: qwen-vl-max, deepseek-vl 等，取决于服务商)。
-                                      </p>
                                   </div>
 
                                   <div className="pt-4 border-t border-gray-300/30">
@@ -1069,8 +1137,8 @@ const App: React.FC = () => {
                                       </div>
                                       <div className="flex justify-between items-center text-sm mt-2">
                                           <span className="text-gray-600">当前生效引擎:</span>
-                                          <span className={`font-bold font-mono ${aiProvider === 'deepseek' ? 'text-blue-600' : 'text-green-600'}`}>
-                                              {aiProvider === 'deepseek' ? 'DeepSeek / Compatible' : 'Google Gemini'}
+                                          <span className={`font-bold font-mono ${aiProvider === 'kimi' ? 'text-blue-600' : 'text-green-600'}`}>
+                                              {aiProvider === 'kimi' ? 'Kimi (Moonshot)' : 'Google Gemini'}
                                           </span>
                                       </div>
                                   </div>
