@@ -406,21 +406,31 @@ const App: React.FC = () => {
 
   // --- Logic: Admin ---
   const handleSaveArticle = () => {
-      if (editingArticle && editingArticle.title) {
+      if (editingArticle && editingArticle.title && editingArticle.title.trim()) {
           if (editingArticle.id) {
               // Update
               setNewsItems(prev => prev.map(item => item.id === editingArticle.id ? { ...item, ...editingArticle } as NewsItem : item));
           } else {
               // Create
               const newId = newsItems.length > 0 ? Math.max(...newsItems.map(i => i.id)) + 1 : 1;
-              setNewsItems(prev => [{ id: newId, title: editingArticle.title!, date: new Date().toISOString().split('T')[0], content: editingArticle.content || '' }, ...prev]);
+              const newItem: NewsItem = {
+                  id: newId,
+                  title: editingArticle.title!,
+                  date: new Date().toISOString().split('T')[0],
+                  content: editingArticle.content || ''
+              };
+              setNewsItems(prev => [newItem, ...prev]);
           }
           setEditingArticle(null);
+      } else {
+          alert("请填写文章标题！");
       }
   };
 
   const handleDeleteArticle = (id: number) => {
-      setNewsItems(prev => prev.filter(i => i.id !== id));
+      if (confirm('确定要删除这篇文章吗？')) {
+          setNewsItems(prev => prev.filter(i => i.id !== id));
+      }
   };
 
   // --- Render Views ---
@@ -947,7 +957,10 @@ const App: React.FC = () => {
                                         placeholder="输入标题..." 
                                         className="flex-1 bg-transparent text-2xl font-bold outline-none placeholder-gray-400"
                                         value={editingArticle.title || ''}
-                                        onChange={e => setEditingArticle(prev => ({...prev, title: e.target.value}))}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            setEditingArticle(prev => prev ? { ...prev, title: val } : { title: val });
+                                        }}
                                       />
                                       <button onClick={handleSaveArticle} className="bg-blue-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 shadow-md">
                                           <Save size={18} /> 保存
@@ -958,7 +971,10 @@ const App: React.FC = () => {
                                         className="flex-1 bg-transparent resize-none outline-none font-mono text-sm text-gray-700 leading-relaxed"
                                         placeholder="# Start writing in Markdown..."
                                         value={editingArticle.content || ''}
-                                        onChange={e => setEditingArticle(prev => ({...prev, content: e.target.value}))}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            setEditingArticle(prev => prev ? { ...prev, content: val } : { content: val });
+                                        }}
                                       />
                                   </div>
                               </div>
