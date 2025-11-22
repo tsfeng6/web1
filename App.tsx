@@ -1,114 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Newspaper, ChevronRight, Layers, Smartphone, Palette, Lock, Plus, Trash2, Save, Image as ImageIcon, MapPin, Upload, Zap, FileText, Folder, Delete, X, ZapOff, Leaf, Globe, Settings, Cpu } from 'lucide-react';
+import { ArrowLeft, Newspaper, ChevronRight, Layers, Smartphone, Palette, Lock, Plus, Trash2, Save, Image as ImageIcon, MapPin, Upload, Zap, FileText, Folder, Delete, X, ZapOff, Leaf, Globe, Settings, Cpu, ChevronDown } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import Background from './components/Background';
 import GlassCard from './components/GlassCard';
 import { MacBookIcon, IPhoneIcon, WatchIcon, CodeIcon, CpuIcon, GpuIcon, ShieldIcon, PinIcon } from './components/SketchIcons';
-import { IconProps } from './types';
+import { INITIAL_NEWS_ITEMS, PAGES, DATA_VERSION } from './data/content';
+import { PageKey, NewsItem, PageData } from './types';
 
 // --- Data Types & Content ---
-
-type PageKey = 'home' | 'computer' | 'phone' | 'secondhand' | 'code' | 'hardware' | 'news' | 'admin' | 'tools-geo' | 'news-full' | 'news-detail';
 type Theme = 'stereo' | 'flat';
 type TransitionStage = 'idle' | 'exiting' | 'holding' | 'entering';
 type AIProvider = 'gemini' | 'deepseek';
 
-interface PageData {
-  title: string;
-  icon: React.FC<IconProps>;
-  description: string;
-  content: string[];
-}
-
-interface NewsItem {
-    id: number;
-    title: string;
-    date: string;
-    content?: string; // Markdown content support
-}
-
-const PAGES: Record<string, PageData> = {
-  computer: {
-    title: '电脑',
-    icon: MacBookIcon,
-    description: '探索计算机架构与生产力工具的极致。',
-    content: [
-      'DigiBox 数码交流电脑板块致力于为同学们提供最前沿的计算机硬件知识与软件生态体验。',
-      '我们定期举办黑苹果 (Hackintosh) 安装工作坊、Windows 性能调优讲座以及 Linux 发行版尝鲜活动。',
-      '无论你是需要一台高性能的渲染工作站，还是轻薄便携的课堂笔记神器，这里都有详尽的评测与选购指南。',
-      '加入我们，一起探索 ARM 架构的未来，对比 x86 的辉煌，挖掘每一个晶体管的潜能。'
-    ]
-  },
-  phone: {
-    title: '手机',
-    icon: IPhoneIcon,
-    description: '移动科技的前沿阵地与摄影艺术。',
-    content: [
-      '手机早已不仅是通讯工具，它是我们延伸的感官。',
-      '在这里，我们对比 iOS 与 Android 的生态差异，探讨计算摄影的最新算法，以及移动端芯片的性能跃进。',
-      '我们关注各大厂商的发布会，从折叠屏的工业设计到快充技术的物理极限，无所不谈。',
-      '社团内部提供多品牌旗舰机型供成员体验，让“云评测”成为过去。'
-    ]
-  },
-  secondhand: {
-    title: '二手交易',
-    icon: WatchIcon,
-    description: '校内安全、透明的数码流转平台。',
-    content: [
-      '为 BUCEA 师生打造的专属数码循环平台。',
-      '在这里交易闲置的数码产品，我们倡导“验机透明、价格公道、交易安全”。',
-      '社团提供免费的验机服务与指导，帮助你鉴别成色，规避“翻新机”与“暗病机”风险。',
-      '让每一件数码产品都能找到新的主人，发挥它的余热，这不仅是交易，更是环保。'
-    ]
-  },
-  code: {
-    title: '代码',
-    icon: CodeIcon,
-    description: '用逻辑构建世界，用算法改变生活。',
-    content: [
-      'Hello World! 这里是极客的乐园。',
-      '代码板块涵盖 Web 全栈开发、人工智能算法入门、移动端 App 开发以及算法竞赛 (ACM/ICPC) 训练。',
-      '我们崇尚开源精神 (Open Source)，鼓励大家在 GitHub 上分享自己的项目。',
-      '定期举办黑客马拉松 (Hackathon)，让你在 24 小时内将疯狂的想法变为现实。'
-    ]
-  },
-  hardware: {
-    title: '硬件',
-    icon: CpuIcon,
-    description: '硬核极客的浪漫，从电路到芯片。',
-    content: [
-      '如果你对 PCB 电路板的味道着迷，那么你来对地方了。',
-      '硬件板块深入探讨半导体物理、微处理器架构以及嵌入式系统开发 (Arduino/STM32/ESP32)。',
-      '我们组织“装机大赛”，挑战理线艺术与散热极限；我们也研究键盘客制化，寻找最完美的手感。',
-      '从摩尔定律到量子计算，我们关注算力基石的每一次震动。'
-    ]
-  },
-  news: {
-    title: '科技新闻',
-    icon: GpuIcon,
-    description: '捕捉全球科技脉搏，解读行业趋势。',
-    content: [
-      '在这个信息爆炸的时代，我们为你筛选最有价值的科技资讯。',
-      '从 AI 大模型的迭代到半导体产业链的博弈，从虚拟现实 (VR/AR) 的突破到清洁能源的应用。',
-      '不仅是搬运新闻，更是深度解读。我们定期发布社团原创的科技评论周刊。',
-      '在这里，我们不仅是科技的见证者，更是思考者。'
-    ]
-  }
-};
-
-// Initial Mock Data
-const INITIAL_NEWS_ITEMS: NewsItem[] = [
-  { id: 1, title: '数码交流 2024 秋季招新正式启动！', date: '2024-11-20', content: '我们不仅寻找数码爱好者，更寻找未来的科技领袖。\n\n无论你是硬件发烧友、代码极客，还是摄影达人，这里都有属于你的舞台。\n\n**招新部门：**\n- 技术部\n- 媒体部\n- 运营部\n\n期待你的加入！' },
-  { id: 2, title: '关于举办第十届“装机猿”大赛的通知', date: '2024-11-18', content: '这是一场速度与美学的较量。\n\n参赛选手需要在规定时间内完成一台高性能主机的组装与点亮。不仅比拼手速，更比拼理线艺术。\n\n**奖品丰厚：**\n- 一等奖：RTX 4060 显卡一张\n- 二等奖：机械键盘一把\n- 三等奖：大容量固态硬盘' },
-  { id: 3, title: '苹果 M4 芯片深度架构解析讲座回顾', date: '2024-11-15', content: '本次讲座我们深入剖析了 Apple M4 芯片的微架构设计。\n\n从 N3E 工艺的优势到新的 SME 矩阵扩展指令集，讲师带大家领略了移动计算的巅峰。\n\n错过的同学可以在社团网盘下载录像回放。' },
-  { id: 4, title: '校园二手市场规范化交易倡议书', date: '2024-11-10', content: '为了维护良好的校园交易环境，我们倡议：\n\n1. 如实描述商品成色，不隐瞒暗病。\n2. 尽量面交，当场验机。\n3. 合理定价，拒绝恶意倒卖。\n\n让我们共同打造一个诚信、透明的数码交流圈。' },
-];
-
-// Helper for LocalStorage
-const useStickyState = <T,>(defaultValue: T, key: string): [T, React.Dispatch<React.SetStateAction<T>>] => {
+// Helper for LocalStorage with Version Control
+const useStickyState = <T,>(defaultValue: T, key: string, version?: number): [T, React.Dispatch<React.SetStateAction<T>>] => {
     const [value, setValue] = useState<T>(() => {
         try {
             const stickyValue = window.localStorage.getItem(key);
+            const stickyVersion = window.localStorage.getItem(key + '_version');
+            
+            // If version is provided and doesn't match stored version, use default (reset)
+            if (version !== undefined && stickyVersion !== String(version)) {
+                console.log(`[Storage] Version mismatch for ${key}. Resetting to default.`);
+                return defaultValue;
+            }
+
             return stickyValue !== null ? JSON.parse(stickyValue) : defaultValue;
         } catch (error) {
             console.warn(`Error reading ${key} from localStorage`, error);
@@ -119,13 +35,34 @@ const useStickyState = <T,>(defaultValue: T, key: string): [T, React.Dispatch<Re
     useEffect(() => {
         try {
             window.localStorage.setItem(key, JSON.stringify(value));
+            if (version !== undefined) {
+                window.localStorage.setItem(key + '_version', String(version));
+            }
         } catch (error) {
             console.warn(`Error saving ${key} to localStorage`, error);
         }
-    }, [key, value]);
+    }, [key, value, version]);
 
     return [value, setValue];
 };
+
+// Simple Hash Function for Password (lightweight)
+const simpleHash = (str: string) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+    return hash.toString(16);
+};
+
+// Default Password Hash (11451419)
+// Pre-calculated hash to avoid plain text in source code to some extent, 
+// though client-side auth is never fully secure.
+const DEFAULT_PASS_HASH = "63a63a8e"; 
+// We can also use a obfuscated default if we want to reset:
+const DEFAULT_PASS_RAW = atob('MTE0NTE0MTk='); 
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageKey>('home');
@@ -134,12 +71,17 @@ const App: React.FC = () => {
   // Performance: Default to TRUE if unsure
   const [isLiteMode, setIsLiteMode] = useState(false);
   
-  // --- PERSISTENT STATE ---
-  const [newsItems, setNewsItems] = useStickyState<NewsItem[]>(INITIAL_NEWS_ITEMS, 'digibox_news');
-  const [adminPassword, setAdminPassword] = useStickyState<string>('11451419', 'digibox_admin_pass');
-  // AI Settings
+  // --- PERSISTENT STATE (With Versioning) ---
+  // Now using DATA_VERSION from content.tsx. Bumping it in the file will reset these states for users.
+  const [newsItems, setNewsItems] = useStickyState<NewsItem[]>(INITIAL_NEWS_ITEMS, 'digibox_news', DATA_VERSION);
+  
+  // Store HASHED password
+  const [adminPasswordHash, setAdminPasswordHash] = useStickyState<string>(simpleHash(DEFAULT_PASS_RAW), 'digibox_admin_pass_hash', DATA_VERSION);
+  
+  // AI Settings (Not versioned strictly to preserve user API keys across content updates)
   const [deepSeekKey, setDeepSeekKey] = useStickyState<string>('', 'digibox_ds_key');
-  const [deepSeekUrl, setDeepSeekUrl] = useStickyState<string>('https://api.deepseek.com/v1', 'digibox_ds_url');
+  const [deepSeekUrl, setDeepSeekUrl] = useStickyState<string>('https://api.deepseek.com', 'digibox_ds_url');
+  const [deepSeekModel, setDeepSeekModel] = useStickyState<string>('deepseek-chat', 'digibox_ds_model');
 
   // App State
   const [selectedArticleId, setSelectedArticleId] = useState<number | null>(null);
@@ -160,7 +102,7 @@ const App: React.FC = () => {
   // AI & Geo Tool State
   const [geoImage, setGeoImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [geoResult, setGeoResult] = useState<{city: string, prob: number}[] | null>(null);
+  const [geoResult, setGeoResult] = useState<{city: string, prob: number, error?: boolean}[] | null>(null);
   const [aiProvider, setAiProvider] = useState<AIProvider>('gemini');
   const [userRegion, setUserRegion] = useState<string>('Unknown');
 
@@ -198,11 +140,10 @@ const App: React.FC = () => {
     // Region/IP Check for AI Provider
     const checkRegion = async () => {
         try {
-            // Using a free IP API to check country code
             const res = await fetch('https://ipapi.co/json/');
             if (res.ok) {
                 const data = await res.json();
-                const country = data.country_code || data.country; // 'CN', 'US', etc.
+                const country = data.country_code || data.country;
                 console.log("User Region Detected:", country);
                 setUserRegion(country);
                 if (country === 'CN') {
@@ -213,11 +154,11 @@ const App: React.FC = () => {
             }
         } catch (error) {
             console.warn("Failed to detect region, defaulting to Gemini", error);
-            // Fallback: check browser language as a hint? 
-            const lang = navigator.language;
-            if (lang.includes('zh-CN')) {
-                // Weak signal, but maybe useful
-                // setAiProvider('deepseek'); 
+            // Fallback: check time zone or language
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (tz.includes('Shanghai') || tz.includes('Beijing')) {
+                setAiProvider('deepseek');
+                setUserRegion('CN (Est)');
             }
         }
     };
@@ -237,7 +178,7 @@ const App: React.FC = () => {
       };
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentPage, isAdminAuthenticated, inputCode, adminPassword]); // Added adminPassword dep
+  }, [currentPage, isAdminAuthenticated, inputCode, adminPasswordHash]);
 
   const handleKeypadInput = (key: string) => {
       if (isAdminAuthenticated) return;
@@ -251,8 +192,8 @@ const App: React.FC = () => {
           const newCode = inputCode + key;
           setInputCode(newCode);
           if (newCode.length === 8) {
-              // Verify against persisted password
-              if (newCode === adminPassword) {
+              // Compare HASH
+              if (simpleHash(newCode) === adminPasswordHash) {
                   setTimeout(() => setIsAdminAuthenticated(true), 300);
               } else {
                   setIsShake(true);
@@ -353,15 +294,14 @@ const App: React.FC = () => {
   };
 
   const callDeepSeek = async (base64Image: string) => {
-      if (!deepSeekKey) throw new Error("Please configure DeepSeek API Key in Admin Panel");
+      if (!deepSeekKey) throw new Error("API_KEY_MISSING");
       
-      // DeepSeek V3/R1 API is OpenAI Compatible but mostly Text-Text.
-      // For Image analysis, it needs a Vision-capable model.
-      // If using standard DeepSeek API, it might fail on images or we assume the user points URL to a compatible Vision endpoint (e.g. local VLM or specific proxy).
-      // Here we construct a standard OpenAI Vision payload.
+      // IMPORTANT: DeepSeek standard 'chat' models usually DON'T support images.
+      // The user must configure a compatible model (e.g. via OpenRouter or a local vision model).
+      // We construct a standard OpenAI Vision payload here.
       
       const payload = {
-          model: "deepseek-chat", // Or deepseek-vl-chat if supported by the endpoint
+          model: deepSeekModel || "deepseek-chat", 
           messages: [
               {
                   role: "user",
@@ -374,7 +314,11 @@ const App: React.FC = () => {
           max_tokens: 500
       };
 
-      const res = await fetch(`${deepSeekUrl}/chat/completions`, {
+      // Clean URL (remove trailing slash)
+      const baseUrl = deepSeekUrl.replace(/\/$/, '');
+      const url = `${baseUrl}/chat/completions`;
+
+      const res = await fetch(url, {
           method: 'POST',
           headers: {
               'Content-Type': 'application/json',
@@ -385,6 +329,10 @@ const App: React.FC = () => {
 
       if (!res.ok) {
           const errText = await res.text();
+          // Check for common DeepSeek 400 error regarding media
+          if (res.status === 400 && errText.includes("media")) {
+             throw new Error("VISION_NOT_SUPPORTED");
+          }
           throw new Error(`DeepSeek API Error: ${res.status} - ${errText}`);
       }
 
@@ -417,14 +365,25 @@ const App: React.FC = () => {
       } catch (error: any) {
           console.error("AI Analysis Failed", error);
           let errorMsg = "Connection Failed";
-          if (error.message.includes("API Key")) errorMsg = "缺少 API Key";
-          if (error.message.includes("401")) errorMsg = "API Key 无效";
+          let isAuthError = false;
+          let isVisionError = false;
+
+          if (error.message === "API_KEY_MISSING") {
+              errorMsg = "缺少 API Key";
+              isAuthError = true;
+          } else if (error.message.includes("401")) {
+              errorMsg = "API Key 无效";
+              isAuthError = true;
+          } else if (error.message === "VISION_NOT_SUPPORTED") {
+              errorMsg = "该模型不支持图片识别";
+              isVisionError = true;
+          }
           
           setGeoResult([
-              { city: `错误: ${aiProvider === 'deepseek' ? 'DeepSeek' : 'Gemini'}`, prob: 0 },
-              { city: errorMsg, prob: 0 },
-              { city: '请在后台检查设置', prob: 0 },
-              { city: 'Please check Admin > System', prob: 0 },
+              { city: `错误: ${aiProvider === 'deepseek' ? 'DeepSeek' : 'Gemini'}`, prob: 0, error: true },
+              { city: errorMsg, prob: 0, error: isAuthError || isVisionError },
+              { city: isAuthError ? '点击此处前往配置' : '请检查系统设置', prob: 0, error: isAuthError },
+              { city: isVisionError ? '请切换 AI 模型' : 'Please check Admin', prob: 0 },
           ]);
       } finally {
           setIsAnalyzing(false);
@@ -634,7 +593,6 @@ const App: React.FC = () => {
     );
   };
 
-  // ... (NewsDetail and NewsTimeline remain largely the same, handled by state now) ...
   const renderNewsDetail = () => {
     const article = newsItems.find(i => i.id === selectedArticleId);
     if (!article) return null;
@@ -674,7 +632,7 @@ const App: React.FC = () => {
                       <ArrowLeft size={24} strokeWidth={iconStrokeWidth} />
                       <span className={theme === 'stereo' ? 'font-medium' : 'font-[200]'}>返回</span>
                   </button>
-                  <h2 className={`text-3xl ${getFontClass('h2')}`}>社团动态时间轴</h2>
+                  <h2 className={`text-3xl ${getFontClass('h2')}`}>交流动态时间轴</h2>
                   <div className="w-20"></div>
                </div>
                <div className="flex-1 overflow-y-auto custom-scrollbar pl-10 pr-4">
@@ -704,7 +662,6 @@ const App: React.FC = () => {
       </div>
   );
 
-  // ... (RenderContentPage same as before) ...
   const renderContentPage = () => {
       if (['home', 'admin', 'tools-geo', 'news-full', 'news-detail'].includes(currentPage)) return null;
       const data = PAGES[currentPage];
@@ -759,14 +716,19 @@ const App: React.FC = () => {
                </button>
                <h2 className={`text-2xl ${getFontClass('h2')}`}>AI 图寻系统</h2>
                
-               {/* AI Provider Indicator */}
-               <div className="flex items-center gap-2 px-4 py-2 bg-white/30 rounded-full border border-white/40 text-xs font-mono text-gray-600">
+               {/* AI Provider Switcher */}
+               <button 
+                 onClick={() => setAiProvider(prev => prev === 'gemini' ? 'deepseek' : 'gemini')}
+                 className="flex items-center gap-2 px-4 py-2 bg-white/30 hover:bg-white/50 rounded-full border border-white/40 text-xs font-mono text-gray-700 transition-all cursor-pointer"
+                 title="点击切换 AI 引擎"
+               >
                    <Globe size={14} />
-                   <span>
-                       {aiProvider === 'gemini' ? 'Google Gemini' : 'DeepSeek'}
-                       {userRegion !== 'Unknown' && ` (${userRegion})`}
+                   <span className="font-bold">
+                       {aiProvider === 'gemini' ? 'Google Gemini' : 'DeepSeek (CN)'}
                    </span>
-               </div>
+                   {userRegion !== 'Unknown' && <span className="opacity-50">| {userRegion}</span>}
+                   <ChevronDown size={12} className="opacity-50" />
+               </button>
            </div>
 
            {/* Content */}
@@ -782,7 +744,9 @@ const App: React.FC = () => {
                        <Upload size={64} className="text-gray-500 mb-6 group-hover:scale-110 transition-transform" strokeWidth={1} />
                        <p className="text-xl text-gray-600 font-medium">点击或拖拽上传图片</p>
                        <p className="text-sm text-gray-500 mt-2">支持 JPG, PNG</p>
-                       <p className="text-xs text-gray-400 mt-1">由 {aiProvider === 'gemini' ? 'Google Gemini' : 'DeepSeek'} 驱动</p>
+                       <p className="text-xs text-gray-400 mt-1">
+                           当前引擎: {aiProvider === 'gemini' ? 'Google Gemini' : 'DeepSeek / Compatible'}
+                       </p>
                    </div>
                ) : (
                    <div className="flex flex-col md:flex-row w-full gap-8 h-full">
@@ -802,13 +766,17 @@ const App: React.FC = () => {
                                </h3>
                                <div className="space-y-4">
                                    {geoResult.map((res, idx) => (
-                                       <div key={idx} className="bg-white/40 rounded-xl p-4 border border-white/50">
+                                       <div 
+                                          key={idx} 
+                                          onClick={() => res.error && handleNavigate('admin')}
+                                          className={`rounded-xl p-4 border border-white/50 transition-colors ${res.error ? 'bg-red-50 border-red-200 cursor-pointer hover:bg-red-100' : 'bg-white/40'}`}
+                                       >
                                            <div className="flex justify-between items-end mb-2">
-                                               <span className="font-medium text-gray-800">{res.city}</span>
-                                               <span className="font-bold text-blue-700">{res.prob}%</span>
+                                               <span className={`font-medium ${res.error ? 'text-red-600' : 'text-gray-800'}`}>{res.city}</span>
+                                               <span className={`font-bold ${res.error ? 'text-red-400' : 'text-blue-700'}`}>{res.prob}%</span>
                                            </div>
                                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                                               <div className="h-full bg-blue-600 rounded-full transition-all duration-1000 ease-out" style={{ width: `${res.prob}%` }}></div>
+                                               <div className={`h-full rounded-full transition-all duration-1000 ease-out ${res.error ? 'bg-red-400' : 'bg-blue-600'}`} style={{ width: `${res.prob}%` }}></div>
                                            </div>
                                        </div>
                                    ))}
@@ -850,7 +818,7 @@ const App: React.FC = () => {
                    />
                ))}
            </div>
-           <p className={`text-xs ${theme === 'stereo' ? 'text-gray-500' : 'text-gray-400'} mb-6`}>请输入8位数字访问后台</p>
+           {/* Password hint removed for security */}
 
            {/* KEYPAD */}
            <div className="grid grid-cols-3 gap-4 w-full max-w-[240px]">
@@ -923,7 +891,10 @@ const App: React.FC = () => {
                       </button>
                   </nav>
 
-                  <button onClick={() => handleNavigate('home')} className="mt-auto text-sm text-gray-500 hover:text-gray-800 py-2">
+                  <div className="text-xs text-gray-400 mt-auto mb-2 px-2">
+                      Data Version: {DATA_VERSION}
+                  </div>
+                  <button onClick={() => handleNavigate('home')} className="text-sm text-gray-500 hover:text-gray-800 py-2">
                       退出登录
                   </button>
               </div>
@@ -1013,7 +984,7 @@ const App: React.FC = () => {
                                   <button 
                                     onClick={() => {
                                         if(tempPassword.length === 8) {
-                                            setAdminPassword(tempPassword);
+                                            setAdminPasswordHash(simpleHash(tempPassword));
                                             setTempPassword('');
                                             alert('密码修改成功');
                                         } else {
@@ -1031,16 +1002,16 @@ const App: React.FC = () => {
 
                   {adminTab === 'system' && (
                       <div className="flex-1 p-10 flex flex-col items-center justify-center">
-                          <div className="bg-white/40 p-8 rounded-2xl shadow-lg w-full max-w-lg">
+                          <div className="bg-white/40 p-8 rounded-2xl shadow-lg w-full max-w-lg overflow-y-auto max-h-full">
                               <h3 className="text-xl font-bold mb-2 text-gray-700">AI 引擎配置 (DeepSeek)</h3>
                               <p className="text-sm text-gray-500 mb-6">
-                                当检测到用户位于中国大陆 (CN) 时，系统将自动切换至 DeepSeek。
-                                由于 DeepSeek 官方 API 对图片支持不完整，请在此配置。
+                                用于中国大陆地区的自动切换。DeepSeek 官方 API (chat) 通常不支持图片。
+                                建议配合 SiliconFlow、OpenRouter 或本地代理使用。
                               </p>
                               
                               <div className="space-y-4">
                                   <div>
-                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">DeepSeek API Key (sk-...)</label>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">API Key</label>
                                       <input 
                                         type="password" 
                                         className="w-full bg-white/50 border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-blue-500 transition-colors font-mono"
@@ -1051,7 +1022,7 @@ const App: React.FC = () => {
                                   </div>
 
                                   <div>
-                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">API Base URL (兼容 OpenAI 格式)</label>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">API Base URL</label>
                                       <input 
                                         type="text" 
                                         className="w-full bg-white/50 border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-blue-500 transition-colors font-mono"
@@ -1059,7 +1030,20 @@ const App: React.FC = () => {
                                         onChange={e => setDeepSeekUrl(e.target.value)}
                                         placeholder="https://api.deepseek.com"
                                       />
-                                      <p className="text-xs text-gray-400 mt-1">提示：若使用本地 LLM 或代理，请修改此地址。</p>
+                                  </div>
+
+                                  <div>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Model Name</label>
+                                      <input 
+                                        type="text" 
+                                        className="w-full bg-white/50 border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-blue-500 transition-colors font-mono"
+                                        value={deepSeekModel}
+                                        onChange={e => setDeepSeekModel(e.target.value)}
+                                        placeholder="deepseek-chat"
+                                      />
+                                      <p className="text-xs text-gray-400 mt-1">
+                                          注: 如使用图片识别，请确保该模型支持 Vision (例如: qwen-vl-max, deepseek-vl 等，取决于服务商)。
+                                      </p>
                                   </div>
 
                                   <div className="pt-4 border-t border-gray-300/30">
@@ -1070,7 +1054,7 @@ const App: React.FC = () => {
                                       <div className="flex justify-between items-center text-sm mt-2">
                                           <span className="text-gray-600">当前生效引擎:</span>
                                           <span className={`font-bold font-mono ${aiProvider === 'deepseek' ? 'text-blue-600' : 'text-green-600'}`}>
-                                              {aiProvider === 'deepseek' ? 'DeepSeek' : 'Google Gemini'}
+                                              {aiProvider === 'deepseek' ? 'DeepSeek / Compatible' : 'Google Gemini'}
                                           </span>
                                       </div>
                                   </div>

@@ -139,7 +139,7 @@ const PosterCanvas = forwardRef<HTMLDivElement, PosterCanvasProps>(({ blobs, qrC
                     fontWeight: 700,
                     letterSpacing: '0.06em', 
                   }}
-                  className="text-[8rem] leading-[0.85] select-none"
+                  className="text-[7rem] leading-[0.85] select-none"
                 >
                   DigiBox
                 </h1>
@@ -153,8 +153,7 @@ const PosterCanvas = forwardRef<HTMLDivElement, PosterCanvasProps>(({ blobs, qrC
                     letterSpacing: '0.05em' 
                   }}
                 >
-                  <div>数码与计算机</div>
-                  <div>交流群</div>
+                  <div>数码交流</div>
                 </h2>
               </div>
               <div className="mt-12 w-24 h-[8px] rounded-full"
