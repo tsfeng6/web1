@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Newspaper, ChevronRight, Layers, Smartphone, Palette, Lock, Plus, Trash2, Save, Image as ImageIcon, MapPin, Upload, Zap, FileText, Folder, Delete, X, ZapOff, Leaf } from 'lucide-react';
+import { ArrowLeft, Newspaper, ChevronRight, Layers, Smartphone, Palette, Lock, Plus, Trash2, Save, Image as ImageIcon, MapPin, Upload, Zap, FileText, Folder, Delete, X, ZapOff, Leaf, Globe, Settings, Cpu } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import Background from './components/Background';
 import GlassCard from './components/GlassCard';
@@ -11,6 +11,7 @@ import { IconProps } from './types';
 type PageKey = 'home' | 'computer' | 'phone' | 'secondhand' | 'code' | 'hardware' | 'news' | 'admin' | 'tools-geo' | 'news-full' | 'news-detail';
 type Theme = 'stereo' | 'flat';
 type TransitionStage = 'idle' | 'exiting' | 'holding' | 'entering';
+type AIProvider = 'gemini' | 'deepseek';
 
 interface PageData {
   title: string;
@@ -103,18 +104,45 @@ const INITIAL_NEWS_ITEMS: NewsItem[] = [
   { id: 4, title: '校园二手市场规范化交易倡议书', date: '2024-11-10', content: '为了维护良好的校园交易环境，我们倡议：\n\n1. 如实描述商品成色，不隐瞒暗病。\n2. 尽量面交，当场验机。\n3. 合理定价，拒绝恶意倒卖。\n\n让我们共同打造一个诚信、透明的数码交流圈。' },
 ];
 
+// Helper for LocalStorage
+const useStickyState = <T,>(defaultValue: T, key: string): [T, React.Dispatch<React.SetStateAction<T>>] => {
+    const [value, setValue] = useState<T>(() => {
+        try {
+            const stickyValue = window.localStorage.getItem(key);
+            return stickyValue !== null ? JSON.parse(stickyValue) : defaultValue;
+        } catch (error) {
+            console.warn(`Error reading ${key} from localStorage`, error);
+            return defaultValue;
+        }
+    });
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(key, JSON.stringify(value));
+        } catch (error) {
+            console.warn(`Error saving ${key} to localStorage`, error);
+        }
+    }, [key, value]);
+
+    return [value, setValue];
+};
+
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageKey>('home');
   const [theme, setTheme] = useState<Theme>('stereo');
   
-  // Optimization: Default to TRUE if unsure, to be safe for performance
+  // Performance: Default to TRUE if unsure
   const [isLiteMode, setIsLiteMode] = useState(false);
   
+  // --- PERSISTENT STATE ---
+  const [newsItems, setNewsItems] = useStickyState<NewsItem[]>(INITIAL_NEWS_ITEMS, 'digibox_news');
+  const [adminPassword, setAdminPassword] = useStickyState<string>('11451419', 'digibox_admin_pass');
+  // AI Settings
+  const [deepSeekKey, setDeepSeekKey] = useStickyState<string>('', 'digibox_ds_key');
+  const [deepSeekUrl, setDeepSeekUrl] = useStickyState<string>('https://api.deepseek.com/v1', 'digibox_ds_url');
+
   // App State
-  const [newsItems, setNewsItems] = useState<NewsItem[]>(INITIAL_NEWS_ITEMS);
   const [selectedArticleId, setSelectedArticleId] = useState<number | null>(null);
-  
-  // Background Control
   const [bgRefreshKey, setBgRefreshKey] = useState(0);
 
   // Transition States
@@ -123,19 +151,20 @@ const App: React.FC = () => {
 
   // Admin State
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [adminPassword, setAdminPassword] = useState('11451419');
   const [inputCode, setInputCode] = useState('');
   const [isShake, setIsShake] = useState(false);
-  const [adminTab, setAdminTab] = useState<'articles' | 'settings'>('articles');
+  const [adminTab, setAdminTab] = useState<'articles' | 'settings' | 'system'>('articles');
   const [editingArticle, setEditingArticle] = useState<Partial<NewsItem> | null>(null);
   const [tempPassword, setTempPassword] = useState('');
-
-  // Geo Tool State
+  
+  // AI & Geo Tool State
   const [geoImage, setGeoImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [geoResult, setGeoResult] = useState<{city: string, prob: number}[] | null>(null);
-  
-  // Initialization & Font injection
+  const [aiProvider, setAiProvider] = useState<AIProvider>('gemini');
+  const [userRegion, setUserRegion] = useState<string>('Unknown');
+
+  // Initialization: Fonts, Hardware Check, IP Check
   useEffect(() => {
     const loadFonts = async () => {
       try {
@@ -160,15 +189,42 @@ const App: React.FC = () => {
     };
     loadFonts();
 
-    // Performance: Auto-enable Lite Mode for low-spec devices
-    // 4 cores or less typically implies an older CPU/iGPU combo or mobile device
+    // Performance Check
     if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) {
-        console.log("Low-end device detected (<=4 cores), enabling Lite Mode automatically.");
+        console.log("Low-end device detected, enabling Lite Mode automatically.");
         setIsLiteMode(true);
     }
+
+    // Region/IP Check for AI Provider
+    const checkRegion = async () => {
+        try {
+            // Using a free IP API to check country code
+            const res = await fetch('https://ipapi.co/json/');
+            if (res.ok) {
+                const data = await res.json();
+                const country = data.country_code || data.country; // 'CN', 'US', etc.
+                console.log("User Region Detected:", country);
+                setUserRegion(country);
+                if (country === 'CN') {
+                    setAiProvider('deepseek');
+                } else {
+                    setAiProvider('gemini');
+                }
+            }
+        } catch (error) {
+            console.warn("Failed to detect region, defaulting to Gemini", error);
+            // Fallback: check browser language as a hint? 
+            const lang = navigator.language;
+            if (lang.includes('zh-CN')) {
+                // Weak signal, but maybe useful
+                // setAiProvider('deepseek'); 
+            }
+        }
+    };
+    checkRegion();
   }, []);
 
-  // Admin Login Listener (Physical Keyboard)
+  // Admin Login Listener
   useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
           if (currentPage === 'admin' && !isAdminAuthenticated) {
@@ -181,9 +237,8 @@ const App: React.FC = () => {
       };
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentPage, isAdminAuthenticated, inputCode]);
+  }, [currentPage, isAdminAuthenticated, inputCode, adminPassword]); // Added adminPassword dep
 
-  // Handle Code Input Logic (Shared by Keyboard and Keypad)
   const handleKeypadInput = (key: string) => {
       if (isAdminAuthenticated) return;
       
@@ -196,7 +251,7 @@ const App: React.FC = () => {
           const newCode = inputCode + key;
           setInputCode(newCode);
           if (newCode.length === 8) {
-              // Verify
+              // Verify against persisted password
               if (newCode === adminPassword) {
                   setTimeout(() => setIsAdminAuthenticated(true), 300);
               } else {
@@ -215,16 +270,10 @@ const App: React.FC = () => {
     setIsNavigating(true);
     setTimeout(() => {
       setCurrentPage(page);
-      // Reset specific states when leaving
-      if (page !== 'admin') {
-          setInputCode('');
-      }
+      if (page !== 'admin') setInputCode('');
       if (page !== 'tools-geo') {
           setGeoImage(null);
           setGeoResult(null);
-      }
-      if (page !== 'news-detail') {
-          // Optional: reset article selection if needed
       }
       window.scrollTo(0, 0);
       setTimeout(() => {
@@ -240,14 +289,10 @@ const App: React.FC = () => {
         setTransitionStage('holding');
         const nextTheme = theme === 'stereo' ? 'flat' : 'stereo';
         setTheme(nextTheme);
-        if (nextTheme === 'stereo') {
-            setBgRefreshKey(prev => prev + 1);
-        }
+        if (nextTheme === 'stereo') setBgRefreshKey(prev => prev + 1);
         setTimeout(() => {
             setTransitionStage('entering');
-            setTimeout(() => {
-                setTransitionStage('idle');
-            }, 250); 
+            setTimeout(() => setTransitionStage('idle'), 250); 
         }, 800); 
     }, 250); 
   };
@@ -267,7 +312,6 @@ const App: React.FC = () => {
         case 'label': return 'font-bold text-gray-800';
       }
     } else {
-      // Thinner fonts for Flat theme
       switch (type) {
         case 'h1': return 'font-[100] tracking-[0.1em] text-black';
         case 'h2': return 'font-[100] tracking-[0.2em] text-gray-600';
@@ -279,8 +323,80 @@ const App: React.FC = () => {
 
   const iconStrokeWidth = theme === 'stereo' ? 1.5 : 0.8;
 
-  // --- Logic: Tools (REAL AI) ---
-  const analyzeWithGemini = async (base64Image: string) => {
+  // --- Logic: Tools (Multi-Provider AI) ---
+  
+  const callGemini = async (mimeType: string, base64Data: string) => {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [
+              {
+                  role: 'user',
+                  parts: [
+                      { inlineData: { mimeType: mimeType, data: base64Data } },
+                      { text: "Analyze the location of this image. Identify the city or region. Return a JSON array of exactly 4 potential locations with confidence probability (integer 0-100). Key names: 'city', 'prob'. Ensure probabilities are realistic guesses." }
+                  ]
+              }
+          ],
+          config: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                  type: Type.ARRAY,
+                  items: {
+                      type: Type.OBJECT,
+                      properties: { city: { type: Type.STRING }, prob: { type: Type.INTEGER } }
+                  }
+              }
+          }
+      });
+      return response.text ? JSON.parse(response.text) : null;
+  };
+
+  const callDeepSeek = async (base64Image: string) => {
+      if (!deepSeekKey) throw new Error("Please configure DeepSeek API Key in Admin Panel");
+      
+      // DeepSeek V3/R1 API is OpenAI Compatible but mostly Text-Text.
+      // For Image analysis, it needs a Vision-capable model.
+      // If using standard DeepSeek API, it might fail on images or we assume the user points URL to a compatible Vision endpoint (e.g. local VLM or specific proxy).
+      // Here we construct a standard OpenAI Vision payload.
+      
+      const payload = {
+          model: "deepseek-chat", // Or deepseek-vl-chat if supported by the endpoint
+          messages: [
+              {
+                  role: "user",
+                  content: [
+                      { type: "text", text: "Analyze the location of this image. Identify the city or region. Return a strict JSON array (no markdown) of exactly 4 potential locations with confidence probability (integer 0-100). Format: [{\"city\": \"Name\", \"prob\": 90}, ...]" },
+                      { type: "image_url", image_url: { url: base64Image } }
+                  ]
+              }
+          ],
+          max_tokens: 500
+      };
+
+      const res = await fetch(`${deepSeekUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${deepSeekKey}`
+          },
+          body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`DeepSeek API Error: ${res.status} - ${errText}`);
+      }
+
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content;
+      
+      // Cleanup Markdown code blocks if present
+      const cleanJson = content.replace(/```json\n?|```/g, '').trim();
+      return JSON.parse(cleanJson);
+  };
+
+  const analyzeLocation = async (base64Image: string) => {
       setIsAnalyzing(true);
       try {
         const mimeTypeMatch = base64Image.match(/data:([^;]+);base64,(.*)/);
@@ -289,43 +405,26 @@ const App: React.FC = () => {
         const mimeType = mimeTypeMatch[1];
         const base64Data = mimeTypeMatch[2];
 
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: [
-                {
-                    role: 'user',
-                    parts: [
-                        { inlineData: { mimeType: mimeType, data: base64Data } },
-                        { text: "Analyze the location of this image. Identify the city or region. Return a JSON array of exactly 4 potential locations with confidence probability (integer 0-100). Key names: 'city', 'prob'. Ensure probabilities are realistic guesses." }
-                    ]
-                }
-            ],
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: { city: { type: Type.STRING }, prob: { type: Type.INTEGER } }
-                    }
-                }
-            }
-        });
-
-        const text = response.text;
-        if (text) {
-            const data = JSON.parse(text);
-            setGeoResult(data);
+        let result;
+        if (aiProvider === 'deepseek') {
+            result = await callDeepSeek(base64Image);
+        } else {
+            result = await callGemini(mimeType, base64Data);
         }
-      } catch (error) {
+        
+        if (result) setGeoResult(result);
+
+      } catch (error: any) {
           console.error("AI Analysis Failed", error);
+          let errorMsg = "Connection Failed";
+          if (error.message.includes("API Key")) errorMsg = "缺少 API Key";
+          if (error.message.includes("401")) errorMsg = "API Key 无效";
+          
           setGeoResult([
-              { city: 'AI连接失败 (Connection Failed)', prob: 0 },
-              { city: '请检查 API Key', prob: 0 },
-              { city: 'Please check network', prob: 0 },
-              { city: 'Retry later', prob: 0 },
+              { city: `错误: ${aiProvider === 'deepseek' ? 'DeepSeek' : 'Gemini'}`, prob: 0 },
+              { city: errorMsg, prob: 0 },
+              { city: '请在后台检查设置', prob: 0 },
+              { city: 'Please check Admin > System', prob: 0 },
           ]);
       } finally {
           setIsAnalyzing(false);
@@ -340,7 +439,7 @@ const App: React.FC = () => {
               const result = reader.result as string;
               setGeoImage(result);
               setGeoResult(null);
-              analyzeWithGemini(result);
+              analyzeLocation(result);
           };
           reader.readAsDataURL(file);
       }
@@ -354,7 +453,7 @@ const App: React.FC = () => {
               setNewsItems(prev => prev.map(item => item.id === editingArticle.id ? { ...item, ...editingArticle } as NewsItem : item));
           } else {
               // Create
-              const newId = Math.max(...newsItems.map(i => i.id)) + 1;
+              const newId = newsItems.length > 0 ? Math.max(...newsItems.map(i => i.id)) + 1 : 1;
               setNewsItems(prev => [{ id: newId, title: editingArticle.title!, date: new Date().toISOString().split('T')[0], content: editingArticle.content || '' }, ...prev]);
           }
           setEditingArticle(null);
@@ -368,8 +467,6 @@ const App: React.FC = () => {
   // --- Render Views ---
 
   const renderHome = () => {
-    
-    // STROKE WIDTH CALCULATION FOR VISUAL CONSISTENCY
     const lucideStroke = theme === 'stereo' ? 1.5 : 1.2;
     const shieldStroke = theme === 'stereo' ? 6 : 5;
 
@@ -398,13 +495,12 @@ const App: React.FC = () => {
              </div>
            )}
 
-           {/* RELOCATED BUTTONS: Backend & Theme */}
+           {/* Buttons */}
            <div className="absolute bottom-6 right-6 flex gap-4 z-20">
-                {/* Lite Mode Toggle */}
                <button 
                   onClick={toggleLiteMode}
                   className={`p-3 rounded-full transition-all duration-300 flex items-center justify-center group hover:scale-105 ${isLiteMode ? 'bg-green-100 text-green-700 border border-green-300 shadow-md' : 'bg-white/40 text-gray-500 hover:bg-white/60'}`}
-                  title={isLiteMode ? "已开启节能模式 (高性能)" : "开启节能模式 (解决卡顿)"}
+                  title={isLiteMode ? "已开启节能模式" : "开启节能模式"}
                >
                    {isLiteMode ? <Leaf size={20} strokeWidth={2} /> : <Zap size={20} strokeWidth={lucideStroke} />}
                </button>
@@ -435,7 +531,6 @@ const App: React.FC = () => {
                   variant={theme}
                   lite={isLiteMode} 
                   className="h-full flex flex-col p-8 group relative"
-                  // Clicking header goes to timeline
                   onClick={() => handleNavigate('news-full')}
                   hoverEffect={!isLiteMode}
               >
@@ -450,12 +545,11 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="flex-1 overflow-hidden relative">
-                   {/* Preview List */}
+                   {/* List */}
                    <div className="space-y-5">
                     {newsItems.slice(0, 4).map((item) => (
                         <div 
                           key={item.id} 
-                          // Clicking item goes to Detail Page
                           onClick={(e) => { e.stopPropagation(); setSelectedArticleId(item.id); handleNavigate('news-detail'); }}
                           className={`p-4 transition-all duration-300 cursor-pointer ${
                             theme === 'stereo' 
@@ -476,19 +570,15 @@ const App: React.FC = () => {
                         </div>
                     ))}
                   </div>
-                  
-                  {/* Fade out gradient at bottom to suggest more */}
                   <div className={`absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t ${theme === 'stereo' ? 'from-gray-100/10' : 'from-gray-50/0'} to-transparent pointer-events-none`}></div>
                 </div>
               </GlassCard>
           </div>
 
-          {/* Icon Grid & Tools */}
+          {/* Icon Grid */}
           <div className="lg:col-span-7 h-full">
               <GlassCard variant={theme} lite={isLiteMode} className="h-full relative flex items-center justify-center p-8">
                 <div className="w-full h-full flex flex-col">
-                    
-                    {/* Main Categories */}
                     <div className="grid grid-cols-3 gap-x-12 gap-y-10 w-full max-w-xl mx-auto pt-4 pb-6">
                     {[
                         { key: 'computer', Icon: MacBookIcon },
@@ -516,13 +606,9 @@ const App: React.FC = () => {
                         </button>
                     ))}
                     </div>
-
-                    {/* Divider Line */}
                     <div className="w-full flex items-center justify-center py-2">
                         <div className={`h-[1px] w-3/4 rounded-full ${theme === 'stereo' ? 'bg-gray-400/30 shadow-[0_1px_0_rgba(255,255,255,0.5)]' : 'bg-gray-300'}`}></div>
                     </div>
-
-                    {/* Tools Section - TEXT REMOVED */}
                     <div className="flex-1 flex items-center justify-center pt-4">
                          <button
                             onClick={(e) => { e.stopPropagation(); handleNavigate('tools-geo'); }}
@@ -540,25 +626,21 @@ const App: React.FC = () => {
                             </div>
                          </button>
                     </div>
-
                 </div>
               </GlassCard>
           </div>
-
         </div>
       </div>
     );
   };
 
-  // Full Screen News Detail Page
+  // ... (NewsDetail and NewsTimeline remain largely the same, handled by state now) ...
   const renderNewsDetail = () => {
     const article = newsItems.find(i => i.id === selectedArticleId);
     if (!article) return null;
-
     return (
         <div className="h-full w-full flex items-center justify-center p-6 md:p-10">
             <GlassCard variant={theme} lite={isLiteMode} className="w-full max-w-5xl h-[85vh] flex flex-col md:flex-row overflow-hidden">
-                {/* Sidebar / Header Area */}
                 <div className={`w-full md:w-1/3 p-10 flex flex-col relative border-b md:border-b-0 md:border-r ${theme === 'stereo' ? 'bg-white/10 border-white/20' : 'bg-transparent border-gray-200'}`}>
                     <button 
                         onClick={() => handleNavigate('home')}
@@ -569,14 +651,11 @@ const App: React.FC = () => {
                          </div>
                          <span className={`text-sm ${theme === 'stereo' ? 'font-medium text-gray-600' : 'font-[200] text-gray-500'}`}>返回主页</span>
                     </button>
-                    
                     <div className="mt-4">
                         <div className={`text-sm font-mono mb-4 ${theme === 'stereo' ? 'text-blue-600 font-bold' : 'text-gray-500 font-[300]'}`}>{article.date}</div>
                         <h1 className={`text-3xl md:text-4xl leading-tight ${getFontClass('h1')}`}>{article.title}</h1>
                     </div>
                 </div>
-
-                {/* Content Area */}
                 <div className={`flex-1 p-10 md:p-16 overflow-y-auto custom-scrollbar ${theme === 'stereo' ? 'bg-white/5' : 'bg-transparent'}`}>
                     <div className={`text-lg leading-relaxed whitespace-pre-line ${theme === 'stereo' ? 'text-gray-700 font-light' : 'text-gray-900 font-[200]'}`}>
                         {article.content || "暂无内容"}
@@ -587,7 +666,6 @@ const App: React.FC = () => {
     );
   };
 
-  // Full Screen Timeline Page
   const renderNewsTimeline = () => (
       <div className="h-full w-full flex items-center justify-center p-6 md:p-10">
           <GlassCard variant={theme} lite={isLiteMode} className="w-full max-w-5xl h-[85vh] flex flex-col relative overflow-hidden p-10">
@@ -599,7 +677,6 @@ const App: React.FC = () => {
                   <h2 className={`text-3xl ${getFontClass('h2')}`}>社团动态时间轴</h2>
                   <div className="w-20"></div>
                </div>
-
                <div className="flex-1 overflow-y-auto custom-scrollbar pl-10 pr-4">
                    <div className={`relative border-l ${theme === 'stereo' ? 'border-gray-400/50' : 'border-gray-300'} ml-4 space-y-12 py-4`}>
                        {newsItems.map((item) => (
@@ -608,26 +685,17 @@ const App: React.FC = () => {
                              className="relative pl-12 group cursor-pointer"
                              onClick={() => { setSelectedArticleId(item.id); handleNavigate('news-detail'); }}
                            >
-                               {/* Timeline Dot */}
                                <div className={`absolute -left-[5px] top-2 w-2.5 h-2.5 rounded-full border-2 transition-all duration-300 ${
                                    theme === 'stereo' 
                                    ? 'bg-white border-blue-500 group-hover:scale-150 shadow-md' 
                                    : 'bg-white border-gray-800 group-hover:scale-125'
                                }`}></div>
-
                                <div className={`mb-2 text-sm font-mono ${theme === 'stereo' ? 'text-blue-600 font-bold' : 'text-gray-500 font-[300]'}`}>
                                    {item.date}
                                </div>
                                <h3 className={`text-2xl mb-4 group-hover:text-blue-600 transition-colors ${theme === 'stereo' ? 'font-bold text-gray-800' : 'font-[200] text-black'}`}>
                                    {item.title}
                                </h3>
-                               <div className={`p-6 rounded-2xl leading-relaxed whitespace-pre-line line-clamp-3 ${
-                                   theme === 'stereo' 
-                                   ? 'bg-white/30 border border-white/40 text-gray-700 shadow-sm group-hover:bg-white/50' 
-                                   : 'bg-gray-50/50 border border-gray-200 text-gray-600 font-[300] group-hover:bg-gray-100'
-                               }`}>
-                                   {item.content || '暂无详细内容...'}
-                               </div>
                            </div>
                        ))}
                    </div>
@@ -636,13 +704,13 @@ const App: React.FC = () => {
       </div>
   );
 
+  // ... (RenderContentPage same as before) ...
   const renderContentPage = () => {
       if (['home', 'admin', 'tools-geo', 'news-full', 'news-detail'].includes(currentPage)) return null;
       const data = PAGES[currentPage];
       return (
         <div className="h-full w-full flex items-center justify-center p-6 md:p-10">
           <GlassCard variant={theme} lite={isLiteMode} className="w-full max-w-5xl h-[85vh] flex flex-col md:flex-row overflow-hidden">
-            {/* Sidebar */}
             <div className={`w-full md:w-1/3 p-10 flex flex-col justify-between relative overflow-hidden border-b md:border-b-0 md:border-r ${
               theme === 'stereo' ? 'bg-white/10 border-white/20' : 'bg-transparent border-gray-200'
             }`}>
@@ -667,7 +735,6 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
-            {/* Content */}
             <div className={`flex-1 p-10 md:p-16 overflow-y-auto custom-scrollbar ${theme === 'stereo' ? 'bg-white/5' : 'bg-transparent'}`}>
               <div className="space-y-10 max-w-2xl">
                  {data.content.map((paragraph, idx) => (
@@ -691,7 +758,15 @@ const App: React.FC = () => {
                    <ArrowLeft size={24} className="text-gray-700" />
                </button>
                <h2 className={`text-2xl ${getFontClass('h2')}`}>AI 图寻系统</h2>
-               <div className="w-10"></div>
+               
+               {/* AI Provider Indicator */}
+               <div className="flex items-center gap-2 px-4 py-2 bg-white/30 rounded-full border border-white/40 text-xs font-mono text-gray-600">
+                   <Globe size={14} />
+                   <span>
+                       {aiProvider === 'gemini' ? 'Google Gemini' : 'DeepSeek'}
+                       {userRegion !== 'Unknown' && ` (${userRegion})`}
+                   </span>
+               </div>
            </div>
 
            {/* Content */}
@@ -706,21 +781,20 @@ const App: React.FC = () => {
                        />
                        <Upload size={64} className="text-gray-500 mb-6 group-hover:scale-110 transition-transform" strokeWidth={1} />
                        <p className="text-xl text-gray-600 font-medium">点击或拖拽上传图片</p>
-                       <p className="text-sm text-gray-500 mt-2">支持 JPG, PNG (AI 分析地理位置)</p>
+                       <p className="text-sm text-gray-500 mt-2">支持 JPG, PNG</p>
+                       <p className="text-xs text-gray-400 mt-1">由 {aiProvider === 'gemini' ? 'Google Gemini' : 'DeepSeek'} 驱动</p>
                    </div>
                ) : (
                    <div className="flex flex-col md:flex-row w-full gap-8 h-full">
-                       {/* Image Preview */}
                        <div className="flex-1 relative rounded-3xl overflow-hidden shadow-2xl bg-black/5">
                            <img src={geoImage} alt="Upload" className="w-full h-full object-cover" />
                            {isAnalyzing && (
                                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center text-white">
                                    <Zap className="animate-pulse mb-4" size={48} />
-                                   <p className="text-xl font-medium tracking-widest animate-pulse">正在分析地理特征...</p>
+                                   <p className="text-xl font-medium tracking-widest animate-pulse">正在分析...</p>
                                </div>
                            )}
                        </div>
-                       {/* Results */}
                        {geoResult && (
                            <div className="w-full md:w-80 flex flex-col justify-center animate-in slide-in-from-right duration-700">
                                <h3 className="text-lg font-bold text-gray-700 mb-6 flex items-center gap-2">
@@ -754,8 +828,6 @@ const App: React.FC = () => {
   const renderAdminLogin = () => (
      <div className="h-full w-full flex items-center justify-center p-6 md:p-10 relative z-50">
         <GlassCard variant={theme} lite={isLiteMode} className={`w-full max-w-md p-8 flex flex-col items-center justify-center transition-transform ${isShake ? 'shake-anim' : ''} relative`}>
-           
-           {/* Back Button */}
            <button 
                 onClick={() => handleNavigate('home')}
                 className="absolute top-6 right-6 p-2 rounded-full hover:bg-gray-200/20 transition-colors"
@@ -766,7 +838,6 @@ const App: React.FC = () => {
            <Lock className={`w-10 h-10 mb-4 ${theme === 'stereo' ? 'text-gray-600' : 'text-gray-800'} mt-4`} strokeWidth={1} />
            <h2 className={`text-xl mb-6 ${getFontClass('h2')}`}>输入密码</h2>
            
-           {/* Dots Display */}
            <div className="flex gap-3 mb-8">
                {Array.from({ length: 8 }).map((_, idx) => (
                    <div 
@@ -781,7 +852,7 @@ const App: React.FC = () => {
            </div>
            <p className={`text-xs ${theme === 'stereo' ? 'text-gray-500' : 'text-gray-400'} mb-6`}>请输入8位数字访问后台</p>
 
-           {/* ON-SCREEN KEYPAD */}
+           {/* KEYPAD */}
            <div className="grid grid-cols-3 gap-4 w-full max-w-[240px]">
                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
                    <button
@@ -796,7 +867,7 @@ const App: React.FC = () => {
                        {num}
                    </button>
                ))}
-               <div className="w-16 h-16"></div> {/* Spacer for alignment */}
+               <div className="w-16 h-16"></div>
                <button
                  onClick={() => handleKeypadInput('0')}
                  className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 ${
@@ -818,7 +889,6 @@ const App: React.FC = () => {
                    <Delete size={24} strokeWidth={1} />
                </button>
            </div>
-
         </GlassCard>
      </div>
   );
@@ -844,6 +914,12 @@ const App: React.FC = () => {
                         className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${adminTab === 'settings' ? 'bg-white/40 font-bold shadow-sm' : 'hover:bg-white/20 text-gray-600'}`}
                       >
                           <Lock size={18} /> 安全设置
+                      </button>
+                      <button 
+                        onClick={() => setAdminTab('system')}
+                        className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${adminTab === 'system' ? 'bg-white/40 font-bold shadow-sm' : 'hover:bg-white/20 text-gray-600'}`}
+                      >
+                          <Cpu size={18} /> 系统设置 (AI)
                       </button>
                   </nav>
 
@@ -907,13 +983,6 @@ const App: React.FC = () => {
                                       </button>
                                   </div>
                                   <div className="flex-1 bg-white/40 rounded-xl border border-white/50 p-4 flex flex-col relative">
-                                      <div className="flex gap-2 mb-2 border-b border-gray-200/50 pb-2">
-                                          <button className="p-2 hover:bg-white/50 rounded text-gray-600 text-sm font-medium">H1</button>
-                                          <button className="p-2 hover:bg-white/50 rounded text-gray-600 text-sm font-medium">Bold</button>
-                                          <button className="p-2 hover:bg-white/50 rounded text-gray-600 flex items-center gap-1 text-sm">
-                                              <ImageIcon size={14} /> 插入图片
-                                          </button>
-                                      </div>
                                       <textarea 
                                         className="flex-1 bg-transparent resize-none outline-none font-mono text-sm text-gray-700 leading-relaxed"
                                         placeholder="# Start writing in Markdown..."
@@ -959,27 +1028,73 @@ const App: React.FC = () => {
                           </div>
                       </div>
                   )}
+
+                  {adminTab === 'system' && (
+                      <div className="flex-1 p-10 flex flex-col items-center justify-center">
+                          <div className="bg-white/40 p-8 rounded-2xl shadow-lg w-full max-w-lg">
+                              <h3 className="text-xl font-bold mb-2 text-gray-700">AI 引擎配置 (DeepSeek)</h3>
+                              <p className="text-sm text-gray-500 mb-6">
+                                当检测到用户位于中国大陆 (CN) 时，系统将自动切换至 DeepSeek。
+                                由于 DeepSeek 官方 API 对图片支持不完整，请在此配置。
+                              </p>
+                              
+                              <div className="space-y-4">
+                                  <div>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">DeepSeek API Key (sk-...)</label>
+                                      <input 
+                                        type="password" 
+                                        className="w-full bg-white/50 border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-blue-500 transition-colors font-mono"
+                                        value={deepSeekKey}
+                                        onChange={e => setDeepSeekKey(e.target.value)}
+                                        placeholder="sk-..."
+                                      />
+                                  </div>
+
+                                  <div>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">API Base URL (兼容 OpenAI 格式)</label>
+                                      <input 
+                                        type="text" 
+                                        className="w-full bg-white/50 border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-blue-500 transition-colors font-mono"
+                                        value={deepSeekUrl}
+                                        onChange={e => setDeepSeekUrl(e.target.value)}
+                                        placeholder="https://api.deepseek.com"
+                                      />
+                                      <p className="text-xs text-gray-400 mt-1">提示：若使用本地 LLM 或代理，请修改此地址。</p>
+                                  </div>
+
+                                  <div className="pt-4 border-t border-gray-300/30">
+                                      <div className="flex justify-between items-center text-sm">
+                                          <span className="text-gray-600">当前检测地区:</span>
+                                          <span className="font-bold font-mono">{userRegion}</span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-sm mt-2">
+                                          <span className="text-gray-600">当前生效引擎:</span>
+                                          <span className={`font-bold font-mono ${aiProvider === 'deepseek' ? 'text-blue-600' : 'text-green-600'}`}>
+                                              {aiProvider === 'deepseek' ? 'DeepSeek' : 'Google Gemini'}
+                                          </span>
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  )}
               </div>
           </GlassCard>
       </div>
   );
 
-  // --- Global Page Transition Logic ---
   const pageContainerClass = `
     relative z-10 w-full h-full transition-all duration-300 ease-silky transform
     ${isNavigating || transitionStage !== 'idle' 
-       ? 'opacity-0 scale-95 blur-md' // Hidden when navigating OR switching themes
-       : 'opacity-100 scale-100 blur-0' // Visible
+       ? 'opacity-0 scale-95 blur-md' 
+       : 'opacity-100 scale-100 blur-0' 
     }
   `;
 
   return (
     <div className="relative w-full h-screen overflow-hidden font-sans selection:bg-blue-100 selection:text-blue-900">
-      
-      {/* Background Layer */}
       <Background visible={theme === 'stereo'} refreshKey={bgRefreshKey} lite={isLiteMode} />
 
-      {/* Middle Stage Transition Overlay (Icon only) */}
       <div className={`fixed inset-0 z-[100] pointer-events-none flex items-center justify-center transition-all duration-500 ${
           transitionStage === 'holding' ? 'opacity-100 scale-100' : 'opacity-0 scale-90'
       }`}>
@@ -992,7 +1107,6 @@ const App: React.FC = () => {
          </div>
       </div>
 
-      {/* Main Content Layer */}
       <div className={pageContainerClass}>
         {currentPage === 'home' && renderHome()}
         {currentPage === 'news-full' && renderNewsTimeline()}
